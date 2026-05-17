@@ -518,7 +518,12 @@ CRITICAL RULES:
   }
 
   Future<void> _startListening() async {
-    if (_listening || _generating) return;
+    // Skip only when actually busy generating. Don't gate on our local
+    // _listening flag — the VoiceService internally cancels any prior STT
+    // session before starting a new one, so a stuck _listening can't keep
+    // the mic dead after one use.
+    if (_generating) return;
+    debugPrint('Chat: mic pressed (was _listening=$_listening)');
     final ok = await VoiceService.instance.startListening(
       onPartial: (text) {
         if (!mounted) return;
@@ -526,6 +531,7 @@ CRITICAL RULES:
       },
       onFinal: (text) {
         if (!mounted) return;
+        debugPrint('Chat: STT final received: "$text"');
         setState(() {
           _controller.text = text;
           _listening = false;
@@ -537,6 +543,7 @@ CRITICAL RULES:
     );
     if (!mounted) return;
     if (!ok) {
+      debugPrint('Chat: VoiceService.startListening returned false');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -545,12 +552,14 @@ CRITICAL RULES:
           behavior: SnackBarBehavior.floating,
         ),
       );
+      setState(() => _listening = false);
       return;
     }
     setState(() => _listening = true);
   }
 
   Future<void> _stopListening() async {
+    debugPrint('Chat: mic released');
     await VoiceService.instance.stopListening();
     if (mounted) setState(() => _listening = false);
   }
