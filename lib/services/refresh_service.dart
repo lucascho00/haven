@@ -38,6 +38,21 @@ class RefreshService {
   final SafePlaceService _safePlaceService;
 
   Future<RefreshResult> refreshAll() async {
+    final activeRefresh = _activeRefresh;
+    if (activeRefresh != null) return activeRefresh;
+
+    final refresh = _refreshAll();
+    _activeRefresh = refresh;
+    return refresh.whenComplete(() {
+      if (identical(_activeRefresh, refresh)) {
+        _activeRefresh = null;
+      }
+    });
+  }
+
+  static Future<RefreshResult>? _activeRefresh;
+
+  Future<RefreshResult> _refreshAll() async {
     final location =
         await _locationService.getCurrentLocation() ??
         HavenCache.getLastLocation();

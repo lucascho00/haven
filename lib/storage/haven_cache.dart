@@ -12,6 +12,7 @@ class HavenCache {
   static const _settingsBox = 'settings';
   static const _locationKey = 'last_location';
   static const _refreshKey = 'last_refresh';
+  static const _backendKey = 'agent_backend';
 
   static Future<void> init({String? path}) async {
     if (path == null) {
@@ -119,5 +120,16 @@ class HavenCache {
     await _settings.put(_refreshKey, {
       'value': DateTime.now().toIso8601String(),
     });
+  }
+
+  /// Preferred Gemma 4 backend: 'auto', 'gpu', or 'cpu'. Defaults to 'auto'.
+  static String getAgentBackend() {
+    final entry = _settings.get(_backendKey);
+    final value = entry?['value'] as String?;
+    return value ?? 'auto';
+  }
+
+  static Future<void> saveAgentBackend(String backend) async {
+    await _settings.put(_backendKey, {'value': backend});
   }
 }

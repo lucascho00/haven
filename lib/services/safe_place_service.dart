@@ -11,22 +11,42 @@ class SafePlaceService {
     'https://overpass-api.de/api/interpreter',
   );
 
+  static const int _radiusMeters = 15000;
+  static const int _routedTopN = 8;
+  static const int _maxResults = 400;
+
+  // Single Overpass regex covering every amenity tag we care about. Kept on
+  // one line so the resulting query stays compact (Overpass parses faster).
+  static const String _amenityTags =
+      'hospital|clinic|pharmacy|police|fire_station|shelter|'
+      'marketplace|drinking_water|place_of_worship|embassy|fuel|atm|'
+      'school|kindergarten|university|college|'
+      'community_centre|social_facility|townhall|bank|bus_station';
+
   Future<List<SafePlace>> fetchNearby(AppLocation location) async {
+    final around = 'around:$_radiusMeters,${location.latitude},${location.longitude}';
     final query =
         '''
-[out:json][timeout:20];
+[out:json][timeout:30];
 (
-  node(around:5000,${location.latitude},${location.longitude})["amenity"~"hospital|clinic|pharmacy|police|fire_station|shelter"];
-  node(around:5000,${location.latitude},${location.longitude})["emergency"~"assembly_point|defibrillator"];
-  way(around:5000,${location.latitude},${location.longitude})["amenity"~"hospital|clinic|pharmacy|police|fire_station|shelter"];
-  way(around:5000,${location.latitude},${location.longitude})["emergency"~"assembly_point|defibrillator"];
+  node($around)["amenity"~"$_amenityTags"];
+  way($around)["amenity"~"$_amenityTags"];
+  node($around)["shop"~"supermarket|convenience"];
+  way($around)["shop"~"supermarket|convenience"];
+  node($around)["emergency"~"assembly_point|defibrillator"];
+  way($around)["emergency"~"assembly_point|defibrillator"];
+  node($around)["man_made"="water_well"];
+  node($around)["public_transport"="station"];
+  way($around)["public_transport"="station"];
+  node($around)["railway"="station"];
+  way($around)["aeroway"~"aerodrome|terminal"];
 );
-out center tags 30;
+out center tags $_maxResults;
 ''';
 
     final response = await http
         .post(_overpassUrl, body: {'data': query})
-        .timeout(const Duration(seconds: 25));
+        .timeout(const Duration(seconds: 35));
     if (response.statusCode != 200) return [];
 
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
@@ -66,9 +86,20 @@ out center tags 30;
         b.distanceMeters ?? double.infinity,
       ),
     );
-    final topPlaces = places.take(8).toList();
 
-    return Future.wait(topPlaces.map((place) => _withRoute(location, place)));
+    // Route the closest N (cost: N HTTP calls to OSRM). The rest get shown on
+    // the map with straight-line distance only — lazy-routed on tap.
+    final routed = await Future.wait(
+      places.take(_routedTopN).map((place) => _withRoute(location, place)),
+    );
+    final remaining = places.skip(_routedTopN).toList();
+    return [...routed, ...remaining];
+  }
+
+  Future<SafePlace?> routeOnce(AppLocation from, SafePlace place) async {
+    final routed = await _withRoute(from, place);
+    if (routed.routeDurationSeconds == null) return null;
+    return routed;
   }
 
   Future<SafePlace> _withRoute(AppLocation location, SafePlace place) async {
@@ -96,8 +127,22 @@ out center tags 30;
 
   String _placeType(Map<String, dynamic> tags) {
     final amenity = tags['amenity'] as String?;
+    final shop = tags['shop'] as String?;
     final emergency = tags['emergency'] as String?;
-    return switch (amenity ?? emergency ?? 'safe place') {
+    final manMade = tags['man_made'] as String?;
+    final publicTransport = tags['public_transport'] as String?;
+    final railway = tags['railway'] as String?;
+    final aeroway = tags['aeroway'] as String?;
+    final raw =
+        amenity ??
+        shop ??
+        emergency ??
+        manMade ??
+        publicTransport ??
+        railway ??
+        aeroway ??
+        'safe place';
+    return switch (raw) {
       'hospital' => 'Hospital',
       'clinic' => 'Clinic',
       'pharmacy' => 'Pharmacy',
@@ -106,6 +151,26 @@ out center tags 30;
       'shelter' => 'Shelter',
       'assembly_point' => 'Assembly Point',
       'defibrillator' => 'Defibrillator',
+      'marketplace' => 'Market',
+      'supermarket' => 'Supermarket',
+      'convenience' => 'Convenience',
+      'drinking_water' => 'Drinking Water',
+      'water_well' => 'Water Well',
+      'place_of_worship' => 'Place of Worship',
+      'embassy' => 'Embassy',
+      'fuel' => 'Fuel',
+      'atm' => 'ATM',
+      'school' => 'School',
+      'kindergarten' => 'Kindergarten',
+      'university' => 'University',
+      'college' => 'College',
+      'community_centre' => 'Community Center',
+      'social_facility' => 'Aid Center',
+      'townhall' => 'Town Hall',
+      'bank' => 'Bank',
+      'bus_station' => 'Bus Station',
+      'station' => railway == 'station' ? 'Train Station' : 'Transit Station',
+      'aerodrome' || 'terminal' => 'Airport',
       _ => 'Safe Place',
     };
   }
