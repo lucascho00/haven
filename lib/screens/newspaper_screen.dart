@@ -4,7 +4,7 @@ import '../models/app_location.dart';
 import '../models/news_article.dart';
 import '../services/article_content_service.dart';
 import '../services/location_service.dart';
-import '../services/news_service.dart';
+import '../services/refresh_service.dart';
 import '../storage/haven_cache.dart';
 import '../ui/glass_theme.dart';
 
@@ -42,22 +42,23 @@ class _NewspaperScreenState extends State<NewspaperScreen> {
     });
 
     try {
-      final location = await LocationService().getCurrentLocation();
-      final articles = await NewsService().fetchLocalNews(location!);
-      final refreshedAt = DateTime.now();
+      final result = await RefreshService().refreshAll();
+      final articles = HavenCache.getNews();
+      final refreshedAt = HavenCache.getLastRefresh();
       if (!mounted) return;
       setState(() {
         _articles = articles;
-        _location = location;
+        _location = result.location ?? _location;
         _lastRefresh = refreshedAt;
-        _status = 'Fetched ${articles.length} reports for ${location.label}.';
+        _status = result.location == null
+            ? 'Location unavailable. Showing cached newspaper.'
+            : 'Fetched ${articles.length} reports for ${result.location!.label}.';
         if (articles.isEmpty) {
-          _error =
-              'Fetch completed but returned 0 reports. Try again or check network restrictions.';
+          _error = result.online
+              ? 'Fetch completed but returned 0 reports. Try again or check network restrictions.'
+              : 'Offline. Connect to the internet to cache newspaper articles.';
         }
       });
-      await HavenCache.saveNews(articles);
-      await HavenCache.markRefreshed();
     } catch (_) {
       if (!mounted) return;
       setState(() {

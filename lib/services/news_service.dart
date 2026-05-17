@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:xml/xml.dart';
 
@@ -23,6 +24,11 @@ class NewsSourceOption {
 }
 
 class NewsService {
+  NewsService({ArticleContentService? articleContentService})
+    : _articleContentService = articleContentService ?? ArticleContentService();
+
+  final ArticleContentService _articleContentService;
+
   static const sourceOptions = [
     NewsSourceOption(
       name: 'GDELT',
@@ -77,10 +83,13 @@ class NewsService {
     final articles = byId.values.toList()
       ..sort((a, b) => b.publishedAt.compareTo(a.publishedAt));
     final trimmed = articles.take(40).toList();
-    final topWithContent = await Future.wait(
-      trimmed.take(12).map(ArticleContentService().fetchFullContent),
-    );
-    return [...topWithContent, ...trimmed.skip(topWithContent.length)];
+    return fetchFullContentForArticles(trimmed);
+  }
+
+  Future<List<NewsArticle>> fetchFullContentForArticles(
+    List<NewsArticle> articles,
+  ) {
+    return Future.wait(articles.map(_articleContentService.fetchFullContent));
   }
 
   Future<List<NewsArticle>> _fetchGdelt(AppLocation location) async {
@@ -111,7 +120,7 @@ class NewsService {
           .map((json) {
             final url = (json['url'] as String?) ?? '';
             return NewsArticle(
-              id: _stableId(url),
+              id: stableArticleId(url),
               title: (json['title'] as String?) ?? 'Untitled report',
               source: (json['domain'] as String?) ?? 'GDELT',
               url: url,
@@ -158,7 +167,7 @@ class NewsService {
             final url = _xmlText(item, 'link');
             final source = _xmlText(item, 'source');
             return NewsArticle(
-              id: _stableId(url),
+              id: stableArticleId(url),
               title: title.isEmpty ? 'Google News report' : title,
               source: source.isEmpty ? 'Google News' : source,
               url: url,
@@ -198,7 +207,7 @@ class NewsService {
             }
             final url = _xmlText(item, 'link');
             return NewsArticle(
-              id: _stableId(url),
+              id: stableArticleId(url),
               title: title.isEmpty ? 'GDACS alert' : title,
               source: 'GDACS',
               url: url,
@@ -248,5 +257,6 @@ class NewsService {
     }
   }
 
-  String _stableId(String value) => base64Url.encode(utf8.encode(value));
+  static String stableArticleId(String value) =>
+      sha256.convert(utf8.encode(value)).toString();
 }
