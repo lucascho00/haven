@@ -37,6 +37,9 @@ dependencies:
   # Local secret loader (HuggingFace token, etc.)
   flutter_dotenv: ^5.2.1
 
+  # Open external news source URLs in the system browser.
+  url_launcher: ^6.3.0
+
   # 오프라인 지도
   flutter_map: ^6.1.0
   latlong2: ^0.9.0

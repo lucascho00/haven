@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/app_location.dart';
 import '../models/news_article.dart';
@@ -444,14 +445,7 @@ class _ArticleReaderSheetState extends State<_ArticleReaderSheet> {
               ),
             ),
             const SizedBox(height: 8),
-            SelectableText(
-              _article.url,
-              style: const TextStyle(
-                color: GlassColors.cyan,
-                fontSize: 13,
-                height: 1.35,
-              ),
-            ),
+            _SourceUrlAction(url: _article.url),
             const SizedBox(height: 18),
             Text(
               'Fetched at ${_fullDateTime(_article.fetchedAt)}'
@@ -473,3 +467,67 @@ String _fullDate(DateTime value) =>
 
 String _fullDateTime(DateTime value) =>
     '${_fullDate(value)} ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+
+class _SourceUrlAction extends StatelessWidget {
+  const _SourceUrlAction({required this.url});
+
+  final String url;
+
+  Future<void> _open(BuildContext context) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not open $url'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _open(context),
+      child: GlassPanel(
+        margin: EdgeInsets.zero,
+        padding: const EdgeInsets.all(12),
+        borderRadius: 16,
+        opacity: 0.12,
+        child: Row(
+          children: [
+            const Icon(
+              Icons.open_in_new_rounded,
+              size: 18,
+              color: GlassColors.cyan,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                url,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: GlassColors.cyan,
+                  fontSize: 13,
+                  height: 1.35,
+                  decoration: TextDecoration.underline,
+                  decorationColor: GlassColors.cyan,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(
+              Icons.arrow_forward_ios_rounded,
+              size: 12,
+              color: GlassColors.textTertiary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
