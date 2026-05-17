@@ -58,10 +58,16 @@ class _HavenHomeScreenState extends State<HavenHomeScreen> {
               child: Stack(
                 children: [
                   Positioned.fill(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(18, 84, 18, 104),
-                      child: IndexedStack(index: index, children: _screens),
-                    ),
+                    // Map tab renders edge-to-edge under the floating header
+                    // and tab bar; other tabs keep the boxed padding.
+                    child: index == HavenTabs.map
+                        ? IndexedStack(index: index, children: _screens)
+                        : Padding(
+                            padding:
+                                const EdgeInsets.fromLTRB(18, 84, 18, 104),
+                            child:
+                                IndexedStack(index: index, children: _screens),
+                          ),
                   ),
                   Positioned(
                     left: 18,

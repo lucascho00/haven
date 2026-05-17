@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/app_location.dart';
@@ -44,13 +45,31 @@ class SafePlaceService {
 out center tags $_maxResults;
 ''';
 
-    final response = await http
-        .post(_overpassUrl, body: {'data': query})
-        .timeout(const Duration(seconds: 35));
-    if (response.statusCode != 200) return [];
+    http.Response response;
+    try {
+      response = await http
+          .post(_overpassUrl, body: {'data': query})
+          .timeout(const Duration(seconds: 35));
+    } catch (e) {
+      debugPrint('SafePlaceService: Overpass POST failed: $e');
+      throw Exception('Overpass request failed: $e');
+    }
+    if (response.statusCode != 200) {
+      debugPrint(
+        'SafePlaceService: Overpass returned HTTP ${response.statusCode}',
+      );
+      throw Exception(
+        'Overpass returned HTTP ${response.statusCode}. The public endpoint '
+        'may be rate-limited; try again in a minute.',
+      );
+    }
 
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
     final elements = (decoded['elements'] as List? ?? const []);
+    debugPrint(
+      'SafePlaceService: Overpass returned ${elements.length} elements '
+      'for ${location.latitude},${location.longitude}',
+    );
     final places = <SafePlace>[];
 
     for (final element in elements.cast<Map<String, dynamic>>()) {

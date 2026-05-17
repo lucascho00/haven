@@ -141,10 +141,11 @@ class _MapScreenState extends State<MapScreen> {
       if (loc != null) {
         _mapController.move(LatLng(loc.latitude, loc.longitude), 13);
       }
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       setState(() {
-        _status = 'Refresh failed. Showing ${_allPlaces.length} cached places.';
+        _status =
+            'Refresh failed: $e. Showing ${_allPlaces.length} cached places.';
       });
     } finally {
       if (mounted) setState(() => _refreshing = false);
@@ -168,42 +169,41 @@ class _MapScreenState extends State<MapScreen> {
 
     return Stack(
       children: [
+        // Full-bleed map — sits under the floating home-screen header + tab bar.
         Positioned.fill(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(28),
-            child: FlutterMap(
-              mapController: _mapController,
-              options: MapOptions(
-                initialCenter: center,
-                initialZoom: 13,
-                minZoom: 4,
-                maxZoom: 18,
-                interactionOptions: const InteractionOptions(
-                  flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
-                ),
+          child: FlutterMap(
+            mapController: _mapController,
+            options: MapOptions(
+              initialCenter: center,
+              initialZoom: 13,
+              minZoom: 4,
+              maxZoom: 18,
+              interactionOptions: const InteractionOptions(
+                flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
               ),
-              children: [
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.haven.app',
-                  maxZoom: 19,
-                ),
-                MarkerLayer(
-                  markers: [
-                    _userLocationMarker(center),
-                    for (final place in places)
-                      _placeMarker(place, onTap: () => _showPlaceSheet(place)),
-                  ],
-                ),
-                const _AttributionFooter(),
-              ],
             ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.haven.app',
+                maxZoom: 19,
+              ),
+              MarkerLayer(
+                markers: [
+                  _userLocationMarker(center),
+                  for (final place in places)
+                    _placeMarker(place, onTap: () => _showPlaceSheet(place)),
+                ],
+              ),
+              const _AttributionFooter(),
+            ],
           ),
         ),
+        // Slim info pill: tucked just under the floating HAVEN header.
         Positioned(
-          left: 0,
-          right: 0,
-          top: 0,
+          left: 18,
+          right: 18,
+          top: 96,
           child: _OverlayHeader(
             location: loc,
             visibleCount: places.length,
@@ -213,15 +213,23 @@ class _MapScreenState extends State<MapScreen> {
             onRefresh: _refresh,
           ),
         ),
+        if (_allPlaces.isEmpty && !_refreshing)
+          Positioned(
+            left: 18,
+            right: 18,
+            top: 168,
+            child: _EmptyPoiBanner(onRefresh: _refresh, status: _status),
+          ),
         Positioned(
-          right: 12,
-          bottom: 72,
+          right: 18,
+          bottom: 184,
           child: _CenterMeButton(onPressed: _centerOnUser),
         ),
+        // Filter strip sits above the floating tab bar (bottom: 26, height ~70).
         Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
+          left: 18,
+          right: 18,
+          bottom: 110,
           child: _CategoryFilterStrip(
             enabled: _enabledCategories,
             counts: _categoryCounts,
@@ -472,6 +480,81 @@ class _CategoryChip extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _EmptyPoiBanner extends StatelessWidget {
+  const _EmptyPoiBanner({required this.onRefresh, required this.status});
+
+  final VoidCallback onRefresh;
+  final String? status;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassPanel(
+      margin: EdgeInsets.zero,
+      padding: const EdgeInsets.all(14),
+      borderRadius: 20,
+      opacity: 0.22,
+      child: Row(
+        children: [
+          const Icon(
+            Icons.cloud_off_outlined,
+            color: GlassColors.amber,
+            size: 22,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'No cached places yet',
+                  style: TextStyle(
+                    color: GlassColors.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  status ??
+                      'Tap refresh while online to fetch hospitals, shelters, schools, '
+                          'water sources, and more for offline use.',
+                  style: const TextStyle(
+                    color: GlassColors.textSecondary,
+                    fontSize: 11,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: onRefresh,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 8,
+              ),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                color: GlassColors.emergency.withValues(alpha: 0.85),
+              ),
+              child: const Text(
+                'Refresh',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
