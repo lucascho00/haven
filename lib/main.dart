@@ -17,19 +17,37 @@ Future<void> main() async {
   await HavenCache.init();
   await BackgroundRefreshService.configure();
 
+  bool envLoaded = false;
   try {
     await dotenv.load(fileName: '.env');
-  } catch (_) {
-    // .env is optional; fall back to --dart-define.
+    envLoaded = true;
+  } catch (e) {
+    debugPrint('HAVEN: dotenv.load(.env) failed — $e');
   }
-  final token = (dotenv.env['HUGGINGFACE_TOKEN']?.trim().isNotEmpty ?? false)
-      ? dotenv.env['HUGGINGFACE_TOKEN']!.trim()
+  final envToken = dotenv.env['HUGGINGFACE_TOKEN']?.trim() ?? '';
+  final token = envToken.isNotEmpty
+      ? envToken
       : (_dartDefineToken.isNotEmpty ? _dartDefineToken : null);
+  debugPrint(
+    'HAVEN: dotenv loaded=$envLoaded | HUGGINGFACE_TOKEN '
+    '${token == null ? "MISSING" : "present (${token.substring(0, 6)}…, ${token.length} chars)"}',
+  );
 
   FlutterGemma.initialize(huggingFaceToken: token, maxDownloadRetries: 10);
   // Start the Gemma 4 install as early as possible — by the time the user
   // reaches the Agent tab the model is already on its way or ready.
-  unawaited(LocalAgentService.instance.ensureInstalled());
+  debugPrint('HAVEN: kicking LocalAgentService.ensureInstalled() at startup');
+  unawaited(
+    LocalAgentService.instance.ensureInstalled().then(
+      (_) => debugPrint(
+        'HAVEN: ensureInstalled() future completed — '
+        'stage=${LocalAgentService.instance.stage.name}, '
+        'error=${LocalAgentService.instance.error ?? "none"}',
+      ),
+      onError: (Object e) =>
+          debugPrint('HAVEN: ensureInstalled() threw — $e'),
+    ),
+  );
   runApp(const HavenApp());
 }
 

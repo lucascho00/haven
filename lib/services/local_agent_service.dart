@@ -97,14 +97,17 @@ class LocalAgentService extends ChangeNotifier {
   Future<void> _install() async {
     _error = null;
     _setStage(AgentInstallStage.checking);
+    debugPrint('LocalAgent: checking isModelInstalled($modelFile)…');
 
     bool installed;
     try {
       installed = await FlutterGemma.isModelInstalled(modelFile);
     } catch (e) {
+      debugPrint('LocalAgent: isModelInstalled threw — $e');
       _setError('Could not check on-device model: $e');
       return;
     }
+    debugPrint('LocalAgent: isModelInstalled returned $installed');
 
     if (installed) {
       _setStage(AgentInstallStage.installed);
@@ -113,8 +116,10 @@ class LocalAgentService extends ChangeNotifier {
 
     _progress = 0;
     _setStage(AgentInstallStage.downloading);
+    debugPrint('LocalAgent: starting download from $modelUrl');
 
     try {
+      var lastLogged = -10;
       await FlutterGemma.installModel(
         modelType: ModelType.gemma4,
         fileType: ModelFileType.litertlm,
@@ -123,10 +128,17 @@ class LocalAgentService extends ChangeNotifier {
           .withProgress((p) {
             _progress = p;
             notifyListeners();
+            // Log every ~10% so we can confirm progress on device.
+            if (p - lastLogged >= 10 || p == 100) {
+              lastLogged = p;
+              debugPrint('LocalAgent: download progress $p%');
+            }
           })
           .install();
+      debugPrint('LocalAgent: install() returned successfully');
       _setStage(AgentInstallStage.installed);
     } catch (e) {
+      debugPrint('LocalAgent: install() threw — $e');
       _setError(
         'Download failed: $e\n\n'
         'Tip: set HUGGINGFACE_TOKEN in .env (or pass via --dart-define) and '
