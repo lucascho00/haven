@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_compass/flutter_compass.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -559,22 +560,65 @@ class _EmptyPoiBanner extends StatelessWidget {
   }
 }
 
-class _CenterMeButton extends StatelessWidget {
+/// Compass button that doubles as the center-me action. Listens to the
+/// iPhone's magnetometer via `flutter_compass` and rotates the icon so its
+/// north arrow keeps pointing at magnetic north as the device turns. Tap
+/// still recenters the map on the user's anchor. Falls back to a static
+/// icon on hosts without a compass (iOS Simulator, web, older iPad).
+class _CenterMeButton extends StatefulWidget {
   const _CenterMeButton({required this.onPressed});
 
   final VoidCallback onPressed;
 
   @override
+  State<_CenterMeButton> createState() => _CenterMeButtonState();
+}
+
+class _CenterMeButtonState extends State<_CenterMeButton> {
+  StreamSubscription<CompassEvent>? _compassSub;
+  double? _heading;
+
+  @override
+  void initState() {
+    super.initState();
+    final stream = FlutterCompass.events;
+    if (stream != null) {
+      _compassSub = stream.listen((event) {
+        if (!mounted) return;
+        final h = event.heading;
+        if (h == null) return;
+        setState(() => _heading = h);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _compassSub?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final headingDeg = _heading;
+    // Compass heading is "where the top of the device points" (0° = north,
+    // 90° = east). To keep the icon's N glyph pointing at magnetic north
+    // regardless of how the device is held, rotate the icon by -heading.
+    final rotationRadians = headingDeg == null
+        ? 0.0
+        : -headingDeg * math.pi / 180.0;
     return GestureDetector(
-      onTap: onPressed,
+      onTap: widget.onPressed,
       child: Container(
         width: 48,
         height: 48,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: GlassColors.cyan.withValues(alpha: 0.92),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.55), width: 2),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.55),
+            width: 2,
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.35),
@@ -583,7 +627,10 @@ class _CenterMeButton extends StatelessWidget {
             ),
           ],
         ),
-        child: const Icon(Icons.explore, color: Colors.white, size: 26),
+        child: Transform.rotate(
+          angle: rotationRadians,
+          child: const Icon(Icons.explore, color: Colors.white, size: 26),
+        ),
       ),
     );
   }
