@@ -10,7 +10,6 @@ import '../models/safe_place.dart';
 import '../services/location_service.dart';
 import '../services/navigation_service.dart';
 import '../services/refresh_service.dart';
-import '../services/safe_place_service.dart';
 import '../storage/haven_cache.dart';
 import '../ui/glass_theme.dart';
 
@@ -584,7 +583,7 @@ class _CenterMeButton extends StatelessWidget {
             ),
           ],
         ),
-        child: const Icon(Icons.my_location, color: Colors.white, size: 22),
+        child: const Icon(Icons.explore, color: Colors.white, size: 26),
       ),
     );
   }
@@ -630,27 +629,11 @@ class _PlaceDetailsSheet extends StatefulWidget {
 
 class _PlaceDetailsSheetState extends State<_PlaceDetailsSheet> {
   late SafePlace _place;
-  bool _routing = false;
 
   @override
   void initState() {
     super.initState();
     _place = widget.initialPlace;
-  }
-
-  Future<void> _fetchRoute() async {
-    final from = widget.userLocation;
-    if (from == null || _routing) return;
-    setState(() => _routing = true);
-    try {
-      final routed = await SafePlaceService().routeOnce(from, _place);
-      if (!mounted) return;
-      if (routed != null) {
-        setState(() => _place = routed);
-      }
-    } finally {
-      if (mounted) setState(() => _routing = false);
-    }
   }
 
   @override
@@ -749,36 +732,6 @@ class _PlaceDetailsSheetState extends State<_PlaceDetailsSheet> {
               '${_place.latitude.toStringAsFixed(5)}, ${_place.longitude.toStringAsFixed(5)}',
               style: const TextStyle(color: GlassColors.textTertiary, fontSize: 11),
             ),
-            const SizedBox(height: 16),
-            if (route == null)
-              GestureDetector(
-                onTap: _routing ? null : _fetchRoute,
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    color: GlassColors.emergency.withValues(alpha: 0.85),
-                  ),
-                  child: Center(
-                    child: _routing
-                        ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text(
-                            'Get fastest route',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                  ),
-                ),
-              ),
           ],
         ),
       ),
