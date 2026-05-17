@@ -59,6 +59,7 @@ CRITICAL RULES:
   InferenceChat? _chat;
   bool _generating = false;
   bool _cpuFallbackAttempted = false;
+  String? _gpuErrorMessage;
 
   // Voice (push-to-talk + TTS readback)
   bool _listening = false;
@@ -132,6 +133,32 @@ CRITICAL RULES:
     await LocalAgentService.instance.ensureInstalled();
   }
 
+  Future<void> _reinstallModel() async {
+    // Tear down any open chat/model so the LiteRT-LM file handle is released
+    // before we wipe it on disk.
+    final chat = _chat;
+    final model = _model;
+    _chat = null;
+    _model = null;
+    _sessionStartScheduled = false;
+    try {
+      await chat?.close();
+    } catch (_) {}
+    try {
+      await model?.close();
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _messages.clear();
+      _stageError = null;
+      _downloadProgress = 0;
+      _cpuFallbackAttempted = false;
+      _gpuErrorMessage = null;
+    });
+    await LocalAgentService.instance.uninstall();
+    await LocalAgentService.instance.ensureInstalled();
+  }
+
   Future<void> _handleSessionFailure(Object error) async {
     if (_looksLikeFileCorruption(error)) {
       // Wipe the bad weights and kick a fresh download via the service.
@@ -148,17 +175,22 @@ CRITICAL RULES:
 
     if (!mounted) return;
     if (_cpuFallbackAttempted) {
-      // GPU and CPU both failed on a valid file → this host can't run Gemma 4.
+      // GPU + CPU both failed. On iOS Simulator the usual culprit is the
+      // Metal binding-31 limit; on a real device it's more often OOM, a
+      // Metal driver bug, or a corrupted cache. Show both errors and let
+      // the user pick a forced backend from Settings.
       setState(() {
         _stage = _ModelStage.incompatibleHost;
         _stageError =
-            'Both GPU and CPU init failed on this host. On the iOS Simulator '
-            'this usually means the Metal driver does not support Argument '
-            'Buffers Tier 2 (binding 31 > sim limit 30) and the CPU fallback '
-            'ran out of resources.\n\n'
-            'Model file is cached and will be reused on a physical iPhone '
-            'without redownloading.\n\n'
-            'Underlying error: $error';
+            'Both GPU and CPU init failed for the on-device Gemma 4 model.\n\n'
+            'GPU error:\n${_gpuErrorMessage ?? "(not captured)"}\n\n'
+            'CPU error:\n$error\n\n'
+            'Things to try:\n'
+            '• Open Settings → Local Agent Backend and force GPU or CPU '
+            'explicitly, then tap reset on the Agent tab.\n'
+            '• Free up RAM by closing other apps and restart HAVEN.\n'
+            '• If both still fail, the .litertlm file may be corrupt — '
+            'tap "Reinstall model" below to wipe and redownload.';
       });
       return;
     }
@@ -170,6 +202,7 @@ CRITICAL RULES:
 
   Future<void> _prepareSession() async {
     _cpuFallbackAttempted = false;
+    _gpuErrorMessage = null;
     final choice = LocalAgentService.instance.backendChoice;
     try {
       await _initWithBackend(choice.preferredBackend);
@@ -180,6 +213,7 @@ CRITICAL RULES:
         rethrow;
       }
       debugPrint('Gemma 4 GPU init failed; falling back to CPU. ($eGpu)');
+      _gpuErrorMessage = eGpu.toString();
       _cpuFallbackAttempted = true;
     }
     await _initWithBackend(PreferredBackend.cpu);
@@ -571,7 +605,10 @@ CRITICAL RULES:
                         detailedError: _stageError,
                       ),
                     if (_stage == _ModelStage.incompatibleHost)
-                      _IncompatibleHostPanel(detailedError: _stageError),
+                      _IncompatibleHostPanel(
+                        detailedError: _stageError,
+                        onReinstall: _reinstallModel,
+                      ),
                     if (_stage == _ModelStage.checking ||
                         _stage == _ModelStage.downloading ||
                         _stage == _ModelStage.incompatibleHost)
@@ -818,9 +855,13 @@ class _DownloadPrompt extends StatelessWidget {
 }
 
 class _IncompatibleHostPanel extends StatelessWidget {
-  const _IncompatibleHostPanel({required this.detailedError});
+  const _IncompatibleHostPanel({
+    required this.detailedError,
+    required this.onReinstall,
+  });
 
   final String? detailedError;
+  final VoidCallback onReinstall;
 
   @override
   Widget build(BuildContext context) {
@@ -837,7 +878,7 @@ class _IncompatibleHostPanel extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Run on a physical iPhone',
+              'Could not start the on-device model',
               style: TextStyle(
                 color: GlassColors.textPrimary,
                 fontSize: 16,
@@ -846,16 +887,40 @@ class _IncompatibleHostPanel extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             const Text(
-              'Model is downloaded and cached. The iOS Simulator\'s Metal '
-              'driver does not support Argument Buffers Tier 2, which Gemma 4\'s '
-              'LiteRT-LM GPU kernels need. Real iPhones do — no further '
-              'download will be required when you re-launch on device.',
+              'Both GPU and CPU init failed for the cached Gemma 4 weights. '
+              'Try forcing one backend explicitly in Settings → Local Agent '
+              'Backend and tap reset on this tab. If both still fail the '
+              'cached .litertlm file may be corrupt — reinstall it below.',
               style: TextStyle(color: GlassColors.textSecondary, fontSize: 13),
             ),
             if (hasError) ...[
               const SizedBox(height: 14),
               _ErrorDetails(message: detailedError!),
             ],
+            const SizedBox(height: 14),
+            Align(
+              alignment: Alignment.centerRight,
+              child: GestureDetector(
+                onTap: onReinstall,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    color: GlassColors.emergency.withValues(alpha: 0.85),
+                  ),
+                  child: const Text(
+                    'Reinstall model',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
