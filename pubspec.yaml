@@ -43,6 +43,9 @@ dependencies:
   # Magnetometer-driven compass heading for the map center button.
   flutter_compass: ^0.8.1
 
+  # Markdown rendering for AI responses (bullets, bold, links, code blocks).
+  flutter_markdown: ^0.7.4
+
   # 오프라인 지도
   flutter_map: ^6.1.0
   latlong2: ^0.9.0

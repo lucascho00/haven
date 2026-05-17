@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_gemma/core/api/flutter_gemma.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_gemma/core/chat.dart';
 import 'package:flutter_gemma/core/message.dart';
 import 'package:flutter_gemma/core/model.dart';
@@ -293,6 +295,7 @@ CRITICAL RULES:
 
     int tokenCount = 0;
     final stopwatch = Stopwatch();
+    _suppressingToolCallEcho = false;
     try {
       await chat.addQueryChunk(
         Message.text(text: situationPrompt, isUser: true),
@@ -302,7 +305,9 @@ CRITICAL RULES:
         if (response is TextResponse) {
           if (!stopwatch.isRunning) stopwatch.start();
           tokenCount++;
-          setState(() => placeholder.content += response.token);
+          final safe = _sanitiseToken(response.token, placeholder.content);
+          if (safe.isEmpty) continue;
+          setState(() => placeholder.content += safe);
           _scrollToBottomSoon();
         }
       }
@@ -370,6 +375,7 @@ CRITICAL RULES:
     int tokenCount = 0;
     final stopwatch = Stopwatch();
 
+    _suppressingToolCallEcho = false;
     try {
       await chat.addQueryChunk(Message.text(text: text, isUser: true));
 
@@ -378,6 +384,11 @@ CRITICAL RULES:
       // prevent runaway loops.
       for (var iteration = 0; iteration < 4; iteration++) {
         if (!mounted) break;
+        // Reset the echo filter at the start of every iteration: the previous
+        // iteration may have ended in a tool-call burst, but the new one (after
+        // the tool_response) should start with the model's clean natural-language
+        // answer.
+        _suppressingToolCallEcho = false;
         final pendingCalls = <FunctionCallResponse>[];
 
         await for (final response in chat.generateChatResponseAsync()) {
@@ -385,7 +396,9 @@ CRITICAL RULES:
           if (response is TextResponse) {
             if (!stopwatch.isRunning) stopwatch.start();
             tokenCount++;
-            setState(() => aiMessage.content += response.token);
+            final safe = _sanitiseToken(response.token, aiMessage.content);
+            if (safe.isEmpty) continue;
+            setState(() => aiMessage.content += safe);
             _scrollToBottomSoon();
           } else if (response is FunctionCallResponse) {
             pendingCalls.add(response);
@@ -396,14 +409,10 @@ CRITICAL RULES:
 
         if (pendingCalls.isEmpty) break;
 
-        // Surface tool use in the message so the user sees what the model is doing.
-        final toolNames = pendingCalls.map((c) => c.name).join(', ');
-        setState(() {
-          aiMessage.content += aiMessage.content.isEmpty
-              ? '_Looking up: $toolNames…_\n\n'
-              : '\n\n_Looking up: $toolNames…_\n\n';
-        });
-
+        // Quiet tool execution — only logged to the console, never echoed
+        // into the visible chat. Users see the natural-language answer that
+        // the model produces in the next stream iteration, plus the action
+        // card we emit below.
         for (final call in pendingCalls) {
           debugPrint('Gemma tool call: ${call.name}(${call.args})');
           final result = _toolsService.execute(call.name, call.args);
@@ -573,6 +582,39 @@ CRITICAL RULES:
     final text = message.content.trim();
     if (text.isEmpty) return;
     unawaited(VoiceService.instance.speak(text));
+  }
+
+  // Tracks whether the current streamed reply has slipped into "raw
+  // tool-call JSON" mode. When it has, we drop all subsequent text tokens
+  // for this turn instead of letting `{"role": "assistant", "tool_calls":
+  // …}` blobs leak into the user-facing bubble. Reset at every send.
+  bool _suppressingToolCallEcho = false;
+
+  /// Returns the user-safe slice of a streamed text token. Returns an empty
+  /// string when the model has started emitting raw tool-call markup (which
+  /// the LiteRT-LM SDK is supposed to parse into a FunctionCallResponse but
+  /// occasionally lets through as plain TextResponse).
+  String _sanitiseToken(String token, String currentContent) {
+    if (_suppressingToolCallEcho) return '';
+    final combined = currentContent + token;
+    if (_looksLikeToolCallEcho(combined) ||
+        _looksLikeToolCallEcho(token)) {
+      _suppressingToolCallEcho = true;
+      return '';
+    }
+    return token;
+  }
+
+  bool _looksLikeToolCallEcho(String text) {
+    final t = text.trimLeft();
+    if (t.isEmpty) return false;
+    return t.startsWith('<|tool_call') ||
+        t.startsWith('<tool_call') ||
+        t.startsWith('{"role"') ||
+        t.startsWith('{"tool_calls') ||
+        t.startsWith('{"name"') ||
+        t.contains('"tool_calls"') ||
+        t.contains('"function_call"');
   }
 
   void _scrollToBottomSoon() {
@@ -1190,14 +1232,96 @@ class _MessageBubble extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    message.content,
-                    style: const TextStyle(
-                      color: GlassColors.textPrimary,
-                      fontSize: 14,
-                      height: 1.5,
+                  // User messages stay plain (they typed it). AI replies
+                  // render as Markdown so bullet lists, **bold**, links,
+                  // and code blocks from manual content display properly.
+                  if (message.isUser)
+                    Text(
+                      message.content,
+                      style: const TextStyle(
+                        color: GlassColors.textPrimary,
+                        fontSize: 14,
+                        height: 1.5,
+                      ),
+                    )
+                  else
+                    MarkdownBody(
+                      data: message.content,
+                      shrinkWrap: true,
+                      selectable: true,
+                      onTapLink: (text, href, title) async {
+                        if (href == null) return;
+                        final uri = Uri.tryParse(href);
+                        if (uri == null) return;
+                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      },
+                      styleSheet: MarkdownStyleSheet(
+                        p: const TextStyle(
+                          color: GlassColors.textPrimary,
+                          fontSize: 14,
+                          height: 1.5,
+                        ),
+                        strong: const TextStyle(
+                          color: GlassColors.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                          height: 1.5,
+                        ),
+                        em: const TextStyle(
+                          color: GlassColors.textPrimary,
+                          fontSize: 14,
+                          fontStyle: FontStyle.italic,
+                          height: 1.5,
+                        ),
+                        a: const TextStyle(
+                          color: GlassColors.cyan,
+                          decoration: TextDecoration.underline,
+                        ),
+                        listBullet: const TextStyle(
+                          color: GlassColors.textPrimary,
+                          fontSize: 14,
+                          height: 1.5,
+                        ),
+                        h1: const TextStyle(
+                          color: GlassColors.textPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          height: 1.3,
+                        ),
+                        h2: const TextStyle(
+                          color: GlassColors.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          height: 1.3,
+                        ),
+                        h3: const TextStyle(
+                          color: GlassColors.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          height: 1.3,
+                        ),
+                        code: TextStyle(
+                          color: GlassColors.safe,
+                          fontSize: 13,
+                          fontFamily: 'monospace',
+                          backgroundColor:
+                              Colors.black.withValues(alpha: 0.3),
+                        ),
+                        codeblockDecoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        blockquoteDecoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.05),
+                          border: const Border(
+                            left: BorderSide(
+                              color: GlassColors.cyan,
+                              width: 3,
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
                   if (!message.isUser && message.metric != null) ...[
                     const SizedBox(height: 6),
                     Row(
