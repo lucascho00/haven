@@ -26,12 +26,14 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Voice input for emergency assistance</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>GPS for offline evacuation routing</string>
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>Background location for safety alerts</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>GPS for offline evacuation routing</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Voice input for emergency assistance</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>On-device speech recognition lets you ask HAVEN questions hands-free during an emergency.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

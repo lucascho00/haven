@@ -31,8 +31,11 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # Gemma 온디바이스
-  flutter_gemma: ^0.4.0
+  # Gemma 4 on-device (E2B via LiteRT-LM)
+  flutter_gemma: ^0.15.0
+
+  # Local secret loader (HuggingFace token, etc.)
+  flutter_dotenv: ^5.2.1
 
   # 오프라인 지도
   flutter_map: ^6.1.0
@@ -52,6 +55,8 @@ dependencies:
   background_fetch: ^1.6.2
   geocoding: ^4.0.0
   xml: ^6.6.1
+  crypto: ^3.0.7
+  html: ^0.15.6
 
 dev_dependencies:
   flutter_test:
@@ -75,8 +80,11 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # No bundled model — Gemma 4 E2B is downloaded on first launch into
+  # the app's documents directory by flutter_gemma's installer.
+
   assets:
-    - assets/models/
+    - .env
 
   # To add assets to your application, add an assets section, like this:
   # assets:

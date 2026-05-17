@@ -1,14 +1,17 @@
 PODS:
+  - background_downloader (0.0.1):
+    - Flutter
   - background_fetch (1.6.2):
     - Flutter
     - TSBackgroundFetch (~> 4.1.0)
   - connectivity_plus (0.0.1):
     - Flutter
   - Flutter (1.0.0)
-  - flutter_gemma (0.0.1):
+  - flutter_gemma (0.15.0):
     - Flutter
-    - MediaPipeTasksGenAI (= 0.10.20)
-    - MediaPipeTasksGenAIC (= 0.10.20)
+    - MediaPipeTasksGenAI (= 0.10.33)
+    - MediaPipeTasksGenAIC (= 0.10.33)
+    - TensorFlowLiteC (= 0.0.1-nightly.20250619)
   - flutter_tts (0.0.1):
     - Flutter
   - geocoding_ios (1.0.5):
@@ -18,16 +21,23 @@ PODS:
     - FlutterMacOS
   - large_file_handler (0.0.1):
     - Flutter
-  - MediaPipeTasksGenAI (0.10.20):
-    - MediaPipeTasksGenAIC (= 0.10.20)
-  - MediaPipeTasksGenAIC (0.10.20)
+  - MediaPipeTasksGenAI (0.10.33):
+    - MediaPipeTasksGenAIC (= 0.10.33)
+  - MediaPipeTasksGenAIC (0.10.33)
+  - shared_preferences_foundation (0.0.1):
+    - Flutter
+    - FlutterMacOS
   - speech_to_text (0.0.1):
     - Flutter
     - Try
+  - TensorFlowLiteC (0.0.1-nightly.20250619):
+    - TensorFlowLiteC/Core (= 0.0.1-nightly.20250619)
+  - TensorFlowLiteC/Core (0.0.1-nightly.20250619)
   - Try (2.1.1)
   - TSBackgroundFetch (4.1.1)
 
 DEPENDENCIES:
+  - background_downloader (from `.symlinks/plugins/background_downloader/ios`)
   - background_fetch (from `.symlinks/plugins/background_fetch/ios`)
   - connectivity_plus (from `.symlinks/plugins/connectivity_plus/ios`)
   - Flutter (from `Flutter`)
@@ -36,16 +46,20 @@ DEPENDENCIES:
   - geocoding_ios (from `.symlinks/plugins/geocoding_ios/ios`)
   - geolocator_apple (from `.symlinks/plugins/geolocator_apple/darwin`)
   - large_file_handler (from `.symlinks/plugins/large_file_handler/ios`)
+  - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
   - speech_to_text (from `.symlinks/plugins/speech_to_text/ios`)
 
 SPEC REPOS:
   trunk:
     - MediaPipeTasksGenAI
     - MediaPipeTasksGenAIC
+    - TensorFlowLiteC
     - Try
     - TSBackgroundFetch
 
 EXTERNAL SOURCES:
+  background_downloader:
+    :path: ".symlinks/plugins/background_downloader/ios"
   background_fetch:
     :path: ".symlinks/plugins/background_fetch/ios"
   connectivity_plus:
@@ -62,24 +76,29 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/geolocator_apple/darwin"
   large_file_handler:
     :path: ".symlinks/plugins/large_file_handler/ios"
+  shared_preferences_foundation:
+    :path: ".symlinks/plugins/shared_preferences_foundation/darwin"
   speech_to_text:
     :path: ".symlinks/plugins/speech_to_text/ios"
 
 SPEC CHECKSUMS:
+  background_downloader: 50e91d979067b82081aba359d7d916b3ba5fadad
   background_fetch: 31b1fd797189ec25dc022e4ae5e97bebc6f0935d
   connectivity_plus: cb623214f4e1f6ef8fe7403d580fdad517d2f7dd
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
-  flutter_gemma: 4f0033367ab6c469923190ec60f9b2c04a87d5c2
+  flutter_gemma: 68d5423ddc75e003043fb2cefe3c4b0498a0a440
   flutter_tts: 35ac3c7d42412733e795ea96ad2d7e05d0a75113
   geocoding_ios: 33776c9ebb98d037b5e025bb0e7537f6dd19646e
   geolocator_apple: ab36aa0e8b7d7a2d7639b3b4e48308394e8cef5e
   large_file_handler: b37481e9b4972562ffcdc8f75700f47cd592bcec
-  MediaPipeTasksGenAI: 26d0c1cd0aac100d1651a37477748287aca2bf31
-  MediaPipeTasksGenAIC: f7dc1fc6a11654b24c536579c7eb10471621fa7b
+  MediaPipeTasksGenAI: 8eed8e6d03fe26d30c4205cb5295ec7b394432ad
+  MediaPipeTasksGenAIC: cb098ecea44e248efe8fe7e2f62b4cb0df781802
+  shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
   speech_to_text: ae2abc312e619ff1c53e675a9fc4d785a15c03bb
+  TensorFlowLiteC: 215ef57653dd0fa09a474e7d94d79ae64a870b28
   Try: 5ef669ae832617b3cee58cb2c6f99fb767a4ff96
   TSBackgroundFetch: 18918b6449a1e3f01eb0f5b44d6d79ce6160a5a5
 
-PODFILE CHECKSUM: 47a757a7853adf00f34d8294fd2037725e0d47ac
+PODFILE CHECKSUM: 401c052836b5d8360e70cf5b247078e81c156e8a
 
 COCOAPODS: 1.16.2

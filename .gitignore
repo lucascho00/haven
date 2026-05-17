@@ -1,3 +1,7 @@
+# Secrets — HuggingFace token etc. Never commit.
+.env
+.env.local
+
 # Miscellaneous
 *.class
 *.log
