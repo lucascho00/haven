@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui show Path;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_compass/flutter_compass.dart';
@@ -601,39 +602,163 @@ class _CenterMeButtonState extends State<_CenterMeButton> {
   @override
   Widget build(BuildContext context) {
     final headingDeg = _heading;
-    // Compass heading is "where the top of the device points" (0° = north,
-    // 90° = east). To keep the icon's N glyph pointing at magnetic north
-    // regardless of how the device is held, rotate the icon by -heading.
+    // Compass heading is "where the top of the device points" (0° = north).
+    // Rotate the needle by -heading so its red N tip keeps pointing at real
+    // magnetic north regardless of how the device is held.
     final rotationRadians = headingDeg == null
         ? 0.0
         : -headingDeg * math.pi / 180.0;
     return GestureDetector(
       onTap: widget.onPressed,
       child: Container(
-        width: 48,
-        height: 48,
+        width: 56,
+        height: 56,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: GlassColors.cyan.withValues(alpha: 0.92),
+          color: Colors.white.withValues(alpha: 0.96),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.55),
+            color: GlassColors.cyan.withValues(alpha: 0.85),
             width: 2,
           ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.35),
-              blurRadius: 10,
+              blurRadius: 12,
               offset: const Offset(0, 3),
             ),
           ],
         ),
-        child: Transform.rotate(
-          angle: rotationRadians,
-          child: const Icon(Icons.explore, color: Colors.white, size: 26),
+        child: ClipOval(
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Subtle cardinal-direction marks on the static frame so users
+              // can see the needle move against fixed reference points.
+              const CustomPaint(
+                size: Size(56, 56),
+                painter: _CompassFramePainter(),
+              ),
+              // The needle itself rotates to track magnetic north.
+              Transform.rotate(
+                angle: rotationRadians,
+                child: const SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: CustomPaint(painter: _CompassNeedlePainter()),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+/// Paints the static dial — light cardinal ticks at N / E / S / W so the
+/// rotating needle has fixed reference marks to move against.
+class _CompassFramePainter extends CustomPainter {
+  const _CompassFramePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final r = size.width / 2;
+    final tickPaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.18)
+      ..strokeWidth = 1.4;
+    // Four cardinal ticks at the inner edge.
+    for (final angle in const [0.0, math.pi / 2, math.pi, 3 * math.pi / 2]) {
+      final outer = Offset(
+        cx + math.sin(angle) * (r - 3),
+        cy - math.cos(angle) * (r - 3),
+      );
+      final inner = Offset(
+        cx + math.sin(angle) * (r - 7),
+        cy - math.cos(angle) * (r - 7),
+      );
+      canvas.drawLine(inner, outer, tickPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _CompassFramePainter oldDelegate) => false;
+}
+
+/// Paints the rotating compass needle — bright red half labelled "N"
+/// pointing to magnetic north, light grey half pointing south, with a
+/// dark pivot dot dead-centre.
+class _CompassNeedlePainter extends CustomPainter {
+  const _CompassNeedlePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final halfW = size.width * 0.13;
+    final halfH = size.height * 0.40;
+
+    // North half — vivid red triangle pointing UP.
+    final northPath = ui.Path()
+      ..moveTo(cx, cy - halfH)
+      ..lineTo(cx + halfW, cy)
+      ..lineTo(cx - halfW, cy)
+      ..close();
+    canvas.drawPath(
+      northPath,
+      Paint()..color = const Color(0xFFE53935),
+    );
+
+    // South half — neutral grey triangle pointing DOWN.
+    final southPath = ui.Path()
+      ..moveTo(cx, cy + halfH)
+      ..lineTo(cx + halfW, cy)
+      ..lineTo(cx - halfW, cy)
+      ..close();
+    canvas.drawPath(
+      southPath,
+      Paint()..color = const Color(0xFF607D8B),
+    );
+
+    // Centre pivot — clearly marks the rotation axis.
+    canvas.drawCircle(
+      Offset(cx, cy),
+      size.width * 0.07,
+      Paint()..color = Colors.black.withValues(alpha: 0.78),
+    );
+    canvas.drawCircle(
+      Offset(cx, cy),
+      size.width * 0.07,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2,
+    );
+
+    // "N" letter inside the red tip — removes any doubt about which end
+    // points north.
+    final tp = TextPainter(
+      text: TextSpan(
+        text: 'N',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: size.height * 0.18,
+          fontWeight: FontWeight.w900,
+          letterSpacing: -0.2,
+          height: 1.0,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(
+      canvas,
+      Offset(cx - tp.width / 2, cy - halfH * 0.78),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _CompassNeedlePainter oldDelegate) => false;
 }
 
 class _AttributionFooter extends StatelessWidget {
