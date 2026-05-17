@@ -1,7 +1,20 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_gemma/flutter_gemma.dart';
+import 'dart:async';
 
+import 'package:flutter/material.dart';
+import 'package:flutter_gemma/core/api/flutter_gemma.dart';
+import 'package:flutter_gemma/core/chat.dart';
+import 'package:flutter_gemma/core/message.dart';
+import 'package:flutter_gemma/core/model.dart';
+import 'package:flutter_gemma/core/model_response.dart';
+import 'package:flutter_gemma/flutter_gemma_interface.dart';
+import 'package:flutter_gemma/pigeon.g.dart' show PreferredBackend;
+
+import '../models/safe_place.dart';
 import '../services/ai_context_service.dart';
+import '../services/ai_tools_service.dart';
+import '../services/local_agent_service.dart';
+import '../services/navigation_service.dart';
+import '../services/voice_service.dart';
 import '../ui/glass_theme.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -11,114 +24,527 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
+enum _ModelStage { checking, needsDownload, downloading, ready, error, incompatibleHost }
+
 class _ChatScreenState extends State<ChatScreen> {
-  static const String _modelAssetName = 'models/gemma-2b-it-cpu-int4.bin';
-  static const String _modelBundlePath = 'assets/$_modelAssetName';
-
-  final TextEditingController _controller = TextEditingController();
-  final List<Map<String, String>> _messages = [];
-  final AiContextService _contextService = AiContextService();
-  bool _isLoading = false;
-  bool _modelLoading = false;
-  bool _modelReady = false;
-
   static const String _systemPrompt = '''
 You are HAVEN, an emergency AI assistant for civilians in war zones and conflict areas.
 Your role is to provide immediate, life-saving guidance.
 
 CRITICAL RULES:
-- Always prioritize safety and survival
-- Give clear, step-by-step instructions
-- Be concise - users may be in danger
-- Use cached local context when it is relevant
-- Tell users when local context may be stale
-- Support multiple languages - respond in the user's language
-- For medical emergencies, provide immediate actionable steps
-- For evacuation, ask for current location context
+- Always prioritize safety and survival.
+- Give clear, short, step-by-step instructions. Users may be panicked or hurt.
+- ALWAYS respond in the user's input language. If they write in Persian (فارسی),
+  reply in Persian. If they write in Arabic (العربية), reply in Arabic. If they
+  write in Korean (한국어), reply in Korean. Default to English only when the
+  user writes in English.
+- Use the cached local context (location, headlines, safe places, manual list)
+  when it is relevant. When you need detail you do not have, call the available
+  tools (get_safe_places, get_news_article, get_manual_steps).
+- Tell users when local context may be stale.
+- For medical emergencies, provide immediate actionable steps before any caveats.
+- For evacuation questions, name nearby cached safe places from the context.
 ''';
+
+  final TextEditingController _controller = TextEditingController();
+  final List<_ChatMessage> _messages = [];
+  final AiContextService _contextService = AiContextService();
+  final AiToolsService _toolsService = AiToolsService();
+
+  _ModelStage _stage = _ModelStage.checking;
+  int _downloadProgress = 0;
+  String? _stageError;
+
+  InferenceModel? _model;
+  InferenceChat? _chat;
+  bool _generating = false;
+  bool _cpuFallbackAttempted = false;
+
+  // Voice (push-to-talk + TTS readback)
+  bool _listening = false;
+  bool _voiceOutEnabled = true;
+
+  bool _sessionStartScheduled = false;
 
   @override
   void initState() {
     super.initState();
-    _addMessage(
-      'ai',
-      'Local context is ready. I am loading offline AI in the background.',
-    );
-    _initModel();
+    LocalAgentService.instance.addListener(_onAgentChange);
+    // Initial sync — captures state if main.dart's kickoff already finished.
+    _onAgentChange();
+    // Idempotent: returns the in-flight future if main.dart already started one.
+    unawaited(LocalAgentService.instance.ensureInstalled());
   }
 
   @override
   void dispose() {
+    LocalAgentService.instance.removeListener(_onAgentChange);
     _controller.dispose();
-    if (_modelReady) {
-      FlutterGemmaPlugin.instance.close();
-    }
+    _chat?.close();
+    _model?.close();
     super.dispose();
   }
 
-  Future<void> _initModel() async {
-    if (_modelReady || _modelLoading) return;
-
-    try {
-      setState(() => _modelLoading = true);
-      final gemma = FlutterGemmaPlugin.instance;
-
-      if (!await gemma.isLoaded) {
-        await for (final _ in gemma.loadAssetModelWithProgress(
-          fullPath: _modelAssetName,
-        )) {}
-      }
-
-      await gemma.init(maxTokens: 1024);
-      if (!mounted) return;
-
-      setState(() => _modelReady = true);
-      _addMessage(
-        'ai',
-        'HAVEN is ready. I can use cached local manuals, safe places, and news.',
-      );
-    } catch (_) {
-      if (!mounted) return;
-
-      _addMessage(
-        'ai',
-        'Model loading failed. Please make sure $_modelBundlePath is bundled with the app.',
-      );
-    } finally {
-      if (mounted) setState(() => _modelLoading = false);
+  void _onAgentChange() {
+    if (!mounted) return;
+    final agent = LocalAgentService.instance;
+    switch (agent.stage) {
+      case AgentInstallStage.idle:
+      case AgentInstallStage.checking:
+        setState(() {
+          _stage = _ModelStage.checking;
+          _stageError = null;
+        });
+      case AgentInstallStage.downloading:
+        setState(() {
+          _stage = _ModelStage.downloading;
+          _downloadProgress = agent.progress;
+          _stageError = null;
+        });
+      case AgentInstallStage.installed:
+        if (_chat != null || _sessionStartScheduled) return;
+        _sessionStartScheduled = true;
+        unawaited(_runSessionStart());
+      case AgentInstallStage.error:
+        setState(() {
+          _stage = _ModelStage.needsDownload;
+          _stageError = agent.error;
+        });
     }
   }
 
-  void _addMessage(String role, String content) {
-    if (!mounted) return;
+  Future<void> _runSessionStart() async {
+    try {
+      await _prepareSession();
+    } catch (e) {
+      await _handleSessionFailure(e);
+    } finally {
+      _sessionStartScheduled = false;
+    }
+  }
 
+  Future<void> _retryInstall() async {
+    if (!mounted) return;
     setState(() {
-      _messages.add({'role': role, 'content': content});
+      _stageError = null;
+      _downloadProgress = 0;
     });
+    await LocalAgentService.instance.ensureInstalled();
+  }
+
+  Future<void> _handleSessionFailure(Object error) async {
+    if (_looksLikeFileCorruption(error)) {
+      // Wipe the bad weights and kick a fresh download via the service.
+      await LocalAgentService.instance.uninstall();
+      if (!mounted) return;
+      setState(() {
+        _stageError =
+            'On-device model file was invalid and has been removed. '
+            'Restarting download.\n\nUnderlying error: $error';
+      });
+      unawaited(LocalAgentService.instance.ensureInstalled());
+      return;
+    }
+
+    if (!mounted) return;
+    if (_cpuFallbackAttempted) {
+      // GPU and CPU both failed on a valid file → this host can't run Gemma 4.
+      setState(() {
+        _stage = _ModelStage.incompatibleHost;
+        _stageError =
+            'Both GPU and CPU init failed on this host. On the iOS Simulator '
+            'this usually means the Metal driver does not support Argument '
+            'Buffers Tier 2 (binding 31 > sim limit 30) and the CPU fallback '
+            'ran out of resources.\n\n'
+            'Model file is cached and will be reused on a physical iPhone '
+            'without redownloading.\n\n'
+            'Underlying error: $error';
+      });
+      return;
+    }
+    setState(() {
+      _stage = _ModelStage.error;
+      _stageError = 'Could not initialize the local model.\n\n$error';
+    });
+  }
+
+  Future<void> _prepareSession() async {
+    _cpuFallbackAttempted = false;
+    final choice = LocalAgentService.instance.backendChoice;
+    try {
+      await _initWithBackend(choice.preferredBackend);
+      return;
+    } catch (eGpu) {
+      if (_looksLikeFileCorruption(eGpu)) rethrow;
+      if (!choice.allowsFallback || choice.preferredBackend == PreferredBackend.cpu) {
+        rethrow;
+      }
+      debugPrint('Gemma 4 GPU init failed; falling back to CPU. ($eGpu)');
+      _cpuFallbackAttempted = true;
+    }
+    await _initWithBackend(PreferredBackend.cpu);
+  }
+
+  bool _looksLikeFileCorruption(Object error) {
+    final s = error.toString();
+    return s.contains('memory_mapped_file') ||
+        s.contains('Length and offset') ||
+        s.contains('file_size');
+  }
+
+  Future<void> _initWithBackend(PreferredBackend backend) async {
+    final model = await FlutterGemma.getActiveModel(
+      maxTokens: 4096,
+      preferredBackend: backend,
+    );
+    // Static local context lives in the system instruction — sent once, kept
+    // in the KV cache, never re-transmitted per turn.
+    final systemContext = _contextService.buildSystemContext();
+    final chat = await model.createChat(
+      systemInstruction: '$_systemPrompt\n\n$systemContext',
+      modelType: ModelType.gemma4,
+      tools: _toolsService.tools,
+      supportsFunctionCalls: true,
+      temperature: 0.6,
+      topK: 40,
+      topP: 0.95,
+    );
+
+    if (!mounted) {
+      await chat.close();
+      await model.close();
+      return;
+    }
+
+    final cpuNote = backend == PreferredBackend.cpu
+        ? ' (CPU backend — responses will be much slower than on a real iPhone)'
+        : '';
+    setState(() {
+      _model = model;
+      _chat = chat;
+      _stage = _ModelStage.ready;
+      _messages
+        ..clear()
+        ..add(
+          _ChatMessage.ai(
+            'HAVEN is ready$cpuNote. Generating a situation snapshot from the cached context…',
+            streaming: true,
+          ),
+        );
+    });
+
+    // Fire a synthetic first turn so the user sees a useful, grounded snapshot
+    // the moment the Agent tab opens — no typing required. We seed the message
+    // list with a streaming placeholder above and stream into it below.
+    unawaited(_runSituationRead());
+  }
+
+  Future<void> _runSituationRead() async {
+    final chat = _chat;
+    if (chat == null) return;
+    final placeholder = _messages.last;
+    placeholder.content = '';
+    if (mounted) setState(() {});
+
+    const situationPrompt =
+        'Briefly read the cached local context and produce a 3-bullet '
+        'situation snapshot for the user:\n'
+        '1. **Top risks today** — scan the headlines for things like '
+        'airstrike, evacuation, ceasefire, blockade, attack.\n'
+        '2. **Nearest cached safe places** — name 2-3 of them with type.\n'
+        '3. **Most relevant survival manual** — pick one title from the list.\n'
+        'Keep each bullet under 25 words. No preamble.';
+
+    int tokenCount = 0;
+    final stopwatch = Stopwatch();
+    try {
+      await chat.addQueryChunk(
+        Message.text(text: situationPrompt, isUser: true),
+      );
+      await for (final response in chat.generateChatResponseAsync()) {
+        if (!mounted) break;
+        if (response is TextResponse) {
+          if (!stopwatch.isRunning) stopwatch.start();
+          tokenCount++;
+          setState(() => placeholder.content += response.token);
+        }
+      }
+    } catch (e) {
+      debugPrint('Situation read failed: $e');
+      if (placeholder.content.isEmpty) {
+        placeholder.content =
+            'Ready. Ask me anything — about safe places, recent news, or survival steps.';
+      }
+    } finally {
+      stopwatch.stop();
+      final elapsed = stopwatch.elapsedMilliseconds / 1000.0;
+      if (mounted) {
+        setState(() {
+          placeholder.streaming = false;
+          if (tokenCount > 0 && elapsed > 0) {
+            placeholder.metric =
+                '${(tokenCount / elapsed).toStringAsFixed(1)} tok/s · ${_backendLabel()}';
+          }
+        });
+      }
+    }
+  }
+
+  Future<void> _resetChat() async {
+    _generating = false;
+    final chat = _chat;
+    final model = _model;
+    _chat = null;
+    _model = null;
+    try {
+      await chat?.close();
+    } catch (_) {}
+    try {
+      await model?.close();
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _messages.clear();
+      _stage = _ModelStage.checking;
+    });
+    try {
+      await _prepareSession();
+    } catch (e) {
+      await _handleSessionFailure(e);
+    }
   }
 
   Future<void> _sendMessage() async {
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
-    if (!_modelReady) {
-      await _initModel();
-      if (!_modelReady) return;
-    }
+    final chat = _chat;
+    if (text.isEmpty || chat == null || _generating) return;
 
     _controller.clear();
-    _addMessage('user', text);
-    setState(() => _isLoading = true);
+    final aiMessage = _ChatMessage.ai('', streaming: true);
+    setState(() {
+      _messages.add(_ChatMessage.user(text));
+      _messages.add(aiMessage);
+      _generating = true;
+    });
+
+    // LiteRT-LM inference perf measurement. Start clock at first token so we
+    // exclude prefill (which dominates on long prompts but is one-time).
+    int tokenCount = 0;
+    final stopwatch = Stopwatch();
 
     try {
-      final localContext = _contextService.buildContext();
-      final response = await FlutterGemmaPlugin.instance.getResponse(
-        prompt: '$_systemPrompt\n\n$localContext\n\nUser: $text\nHAVEN:',
-      );
-      _addMessage('ai', response ?? 'No response. Please try again.');
-    } catch (_) {
-      _addMessage('ai', 'Error. Please try again.');
+      await chat.addQueryChunk(Message.text(text: text, isUser: true));
+
+      // Tool-call loop: model can emit text + function calls; after we execute
+      // a tool we resume generation so the model can use the result. Capped to
+      // prevent runaway loops.
+      for (var iteration = 0; iteration < 4; iteration++) {
+        if (!mounted) break;
+        final pendingCalls = <FunctionCallResponse>[];
+
+        await for (final response in chat.generateChatResponseAsync()) {
+          if (!mounted) break;
+          if (response is TextResponse) {
+            if (!stopwatch.isRunning) stopwatch.start();
+            tokenCount++;
+            setState(() => aiMessage.content += response.token);
+          } else if (response is FunctionCallResponse) {
+            pendingCalls.add(response);
+          } else if (response is ParallelFunctionCallResponse) {
+            pendingCalls.addAll(response.calls);
+          }
+        }
+
+        if (pendingCalls.isEmpty) break;
+
+        // Surface tool use in the message so the user sees what the model is doing.
+        final toolNames = pendingCalls.map((c) => c.name).join(', ');
+        setState(() {
+          aiMessage.content += aiMessage.content.isEmpty
+              ? '_Looking up: $toolNames…_\n\n'
+              : '\n\n_Looking up: $toolNames…_\n\n';
+        });
+
+        for (final call in pendingCalls) {
+          debugPrint('Gemma tool call: ${call.name}(${call.args})');
+          final result = _toolsService.execute(call.name, call.args);
+          await chat.addQueryChunk(
+            _toolsService.toolResponse(call.name, result),
+          );
+          _emitActionFor(call.name, call.args, result);
+        }
+      }
+    } catch (e, st) {
+      debugPrint('Gemma generation error: $e\n$st');
+      if (mounted) {
+        setState(() {
+          if (aiMessage.content.isEmpty) {
+            aiMessage.content =
+                'Could not generate a response. Tap reset (top right) to start a fresh chat — the session context may have grown too large.';
+          }
+        });
+      }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      stopwatch.stop();
+      final elapsedSec = stopwatch.elapsedMilliseconds / 1000.0;
+      String? metric;
+      if (tokenCount > 0 && elapsedSec > 0) {
+        final tps = (tokenCount / elapsedSec).toStringAsFixed(1);
+        final backendLabel = _backendLabel();
+        metric = '$tps tok/s · $backendLabel';
+      }
+      if (mounted) {
+        setState(() {
+          if (aiMessage.content.isEmpty) {
+            aiMessage.content =
+                'No response was generated. Try rephrasing your question.';
+          }
+          aiMessage.streaming = false;
+          aiMessage.metric = metric;
+          _generating = false;
+        });
+        _maybeSpeakReply(aiMessage);
+      }
+    }
+  }
+
+  /// Translate a tool invocation into a tappable action card appended to the
+  /// chat. Only emits for tools that map to a specific in-app destination.
+  void _emitActionFor(
+    String toolName,
+    Map<String, dynamic> args,
+    Map<String, dynamic> result,
+  ) {
+    if (!mounted) return;
+    _ChatMessage? card;
+
+    PlaceCategory? parseCategory(String? raw) {
+      if (raw == null || raw.isEmpty) return null;
+      return PlaceCategory.values
+          .where((c) => c.name == raw)
+          .cast<PlaceCategory?>()
+          .firstWhere((_) => true, orElse: () => null);
+    }
+
+    switch (toolName) {
+      case 'get_safe_places':
+        final cat = parseCategory((args['category'] as String?)?.toLowerCase());
+        final count = (result['count'] as int?) ?? 0;
+        if (cat != null && count > 0) {
+          card = _ChatMessage.action(
+            kind: _ActionKind.mapCategory,
+            label: 'View $count ${cat.displayName.toLowerCase()} on map',
+            subtitle: 'Map tab will filter to ${cat.displayName} only.',
+            category: cat,
+          );
+        }
+      case 'find_nearest':
+        final cat = parseCategory((args['category'] as String?)?.toLowerCase());
+        final found = result['found'] == true;
+        if (cat != null && found) {
+          final name = result['name'] as String? ?? cat.displayName;
+          card = _ChatMessage.action(
+            kind: _ActionKind.mapPlace,
+            label: 'Show $name on map',
+            subtitle: 'Centers the map on the nearest ${cat.displayName}.',
+            category: cat,
+          );
+        }
+      case 'get_manual_steps':
+        final found = result['found'] == true;
+        if (found) {
+          final id = result['id'] as String? ?? '';
+          final title = result['title'] as String? ?? 'manual';
+          card = _ChatMessage.action(
+            kind: _ActionKind.settingsManual,
+            label: 'Open "$title" in Settings',
+            subtitle: 'Full numbered steps are in the Settings tab.',
+            placeId: id,
+          );
+        }
+      default:
+        return;
+    }
+    if (card != null) {
+      setState(() => _messages.add(card!));
+    }
+  }
+
+  void _handleActionTap(_ChatMessage card) {
+    switch (card.actionKind) {
+      case _ActionKind.mapCategory:
+        NavigationService.instance.goToMap(category: card.actionCategory);
+      case _ActionKind.mapPlace:
+        NavigationService.instance.goToMap(category: card.actionCategory);
+      case _ActionKind.settingsManual:
+        NavigationService.instance.goToSettings();
+      case null:
+        return;
+    }
+  }
+
+  Future<void> _startListening() async {
+    if (_listening || _generating) return;
+    final ok = await VoiceService.instance.startListening(
+      onPartial: (text) {
+        if (!mounted) return;
+        setState(() => _controller.text = text);
+      },
+      onFinal: (text) {
+        if (!mounted) return;
+        setState(() {
+          _controller.text = text;
+          _listening = false;
+        });
+        if (text.trim().isNotEmpty) {
+          unawaited(_sendMessage());
+        }
+      },
+    );
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Microphone unavailable: ${VoiceService.instance.lastError ?? 'permission denied'}',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    setState(() => _listening = true);
+  }
+
+  Future<void> _stopListening() async {
+    await VoiceService.instance.stopListening();
+    if (mounted) setState(() => _listening = false);
+  }
+
+  void _toggleVoiceOut() {
+    setState(() => _voiceOutEnabled = !_voiceOutEnabled);
+    if (!_voiceOutEnabled) {
+      unawaited(VoiceService.instance.stopSpeaking());
+    }
+  }
+
+  void _maybeSpeakReply(_ChatMessage message) {
+    if (!_voiceOutEnabled) return;
+    final text = message.content.trim();
+    if (text.isEmpty) return;
+    unawaited(VoiceService.instance.speak(text));
+  }
+
+  String _backendLabel() {
+    final choice = LocalAgentService.instance.backendChoice;
+    final attemptedFallback = _cpuFallbackAttempted;
+    switch (choice) {
+      case BackendChoice.auto:
+        return attemptedFallback ? 'CPU (LiteRT)' : 'GPU(Metal) via LiteRT-LM';
+      case BackendChoice.gpu:
+        return 'GPU(Metal) via LiteRT-LM';
+      case BackendChoice.cpu:
+        return 'CPU via LiteRT-LM';
     }
   }
 
@@ -126,80 +552,102 @@ CRITICAL RULES:
   Widget build(BuildContext context) {
     return Column(
       children: [
-        _StatusBanner(modelReady: _modelReady, modelLoading: _modelLoading),
+        _StatusBanner(
+          stage: _stage,
+          progress: _downloadProgress,
+          onReset: _stage == _ModelStage.ready ? _resetChat : null,
+        ),
         Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.only(top: 6, bottom: 16),
-            itemCount: _messages.length + (_isLoading ? 1 : 0),
-            itemBuilder: (context, index) {
-              if (index == _messages.length) {
-                return const _TypingIndicator();
-              }
-              final msg = _messages[index];
-              return _MessageBubble(
-                content: msg['content']!,
-                isUser: msg['role'] == 'user',
-              );
-            },
-          ),
-        ),
-        GlassPanel(
-          margin: EdgeInsets.zero,
-          padding: const EdgeInsets.all(10),
-          borderRadius: 28,
-          opacity: 0.2,
-          child: Row(
-            children: [
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.12),
-                    ),
-                  ),
-                  child: TextField(
-                    controller: _controller,
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
-                    decoration: const InputDecoration(
-                      hintText: 'Ask HAVEN using cached local context...',
-                      hintStyle: TextStyle(
-                        color: GlassColors.textTertiary,
-                        fontSize: 12,
+          child: _stage == _ModelStage.ready
+              ? _MessageList(messages: _messages, onActionTap: _handleActionTap)
+              : ListView(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  children: [
+                    if (_stage == _ModelStage.needsDownload ||
+                        _stage == _ModelStage.error)
+                      _DownloadPrompt(
+                        onPressed: _retryInstall,
+                        isRetry: _stage == _ModelStage.error,
+                        detailedError: _stageError,
                       ),
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                    ),
-                    onSubmitted: (_) => _sendMessage(),
-                  ),
+                    if (_stage == _ModelStage.incompatibleHost)
+                      _IncompatibleHostPanel(detailedError: _stageError),
+                    if (_stage == _ModelStage.checking ||
+                        _stage == _ModelStage.downloading ||
+                        _stage == _ModelStage.incompatibleHost)
+                      _PreReadyPlaceholder(stage: _stage),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              GlassIconButton(
-                onPressed: _sendMessage,
-                icon: Icons.arrow_upward_rounded,
-                color: GlassColors.textPrimary,
-              ),
-            ],
-          ),
         ),
+        if (_stage == _ModelStage.ready)
+          _Composer(
+            controller: _controller,
+            enabled: !_generating,
+            listening: _listening,
+            voiceOutEnabled: _voiceOutEnabled,
+            onSend: _sendMessage,
+            onMicPressed: _startListening,
+            onMicReleased: _stopListening,
+            onToggleVoiceOut: _toggleVoiceOut,
+          ),
       ],
     );
   }
 }
 
-class _StatusBanner extends StatelessWidget {
-  const _StatusBanner({required this.modelReady, required this.modelLoading});
+enum _ActionKind { mapCategory, mapPlace, settingsManual }
 
-  final bool modelReady;
-  final bool modelLoading;
+class _ChatMessage {
+  _ChatMessage._(this.role, this.content, {this.streaming = false});
+  factory _ChatMessage.user(String content) => _ChatMessage._('user', content);
+  factory _ChatMessage.ai(String content, {bool streaming = false}) =>
+      _ChatMessage._('ai', content, streaming: streaming);
+
+  factory _ChatMessage.action({
+    required _ActionKind kind,
+    required String label,
+    required String subtitle,
+    PlaceCategory? category,
+    String? placeId,
+  }) {
+    return _ChatMessage._('action', label)
+      ..actionKind = kind
+      ..actionSubtitle = subtitle
+      ..actionCategory = category
+      ..actionPlaceId = placeId;
+  }
+
+  final String role;
+  String content;
+  bool streaming;
+  // LiteRT-LM inference perf, e.g. "12.4 tok/s · GPU(Metal)".
+  String? metric;
+
+  // Action message fields.
+  _ActionKind? actionKind;
+  String? actionSubtitle;
+  PlaceCategory? actionCategory;
+  String? actionPlaceId;
+
+  bool get isUser => role == 'user';
+  bool get isAction => role == 'action';
+}
+
+class _StatusBanner extends StatelessWidget {
+  const _StatusBanner({
+    required this.stage,
+    required this.progress,
+    this.onReset,
+  });
+
+  final _ModelStage stage;
+  final int progress;
+  final VoidCallback? onReset;
 
   @override
   Widget build(BuildContext context) {
+    final (label, color, icon, message) = _statusFor(stage, progress);
+
     return GlassPanel(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
@@ -207,26 +655,254 @@ class _StatusBanner extends StatelessWidget {
       opacity: 0.18,
       child: Row(
         children: [
-          if (modelLoading)
-            const SizedBox.square(
+          if (stage == _ModelStage.checking || stage == _ModelStage.downloading)
+            SizedBox.square(
               dimension: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                value: stage == _ModelStage.downloading && progress > 0
+                    ? progress / 100
+                    : null,
+              ),
             )
           else
-            GlassPill(
-              label: modelReady ? 'AI READY' : 'AI INITIALIZING',
-              icon: modelReady ? Icons.memory : Icons.hourglass_empty,
-              color: modelReady ? GlassColors.safe : GlassColors.amber,
-            ),
+            GlassPill(label: label, icon: icon, color: color),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              modelReady
-                  ? 'Uses cached manuals, safe places, and local reports.'
-                  : 'Gemma is loading automatically with current app context.',
+              message,
               style: const TextStyle(
                 color: GlassColors.textSecondary,
                 fontSize: 12,
+              ),
+            ),
+          ),
+          if (onReset != null) ...[
+            const SizedBox(width: 6),
+            GlassIconButton(
+              icon: Icons.restart_alt,
+              color: GlassColors.textPrimary,
+              onPressed: onReset,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  (String, Color, IconData, String) _statusFor(
+    _ModelStage stage,
+    int progress,
+  ) {
+    switch (stage) {
+      case _ModelStage.checking:
+        return (
+          'CHECKING',
+          GlassColors.amber,
+          Icons.hourglass_empty,
+          'Looking for the on-device Gemma 4 weights...',
+        );
+      case _ModelStage.needsDownload:
+        return (
+          'DOWNLOAD REQUIRED',
+          GlassColors.amber,
+          Icons.cloud_download_outlined,
+          'Gemma 4 E2B (~1.5 GB) is needed once. After this, HAVEN works fully offline.',
+        );
+      case _ModelStage.downloading:
+        return (
+          'DOWNLOADING',
+          GlassColors.cyan,
+          Icons.cloud_download,
+          'Downloading Gemma 4 E2B... $progress%',
+        );
+      case _ModelStage.ready:
+        return (
+          'AI READY',
+          GlassColors.safe,
+          Icons.memory,
+          'Gemma 4 E2B is running on-device. Uses cached manuals, safe places, and reports.',
+        );
+      case _ModelStage.error:
+        return (
+          'ERROR',
+          GlassColors.emergency,
+          Icons.error_outline,
+          'Something went wrong preparing the local model.',
+        );
+      case _ModelStage.incompatibleHost:
+        return (
+          'SIMULATOR LIMIT',
+          GlassColors.amber,
+          Icons.phone_iphone,
+          'Gemma 4 needs a physical iPhone. Model is cached and ready.',
+        );
+    }
+  }
+}
+
+class _DownloadPrompt extends StatelessWidget {
+  const _DownloadPrompt({
+    required this.onPressed,
+    required this.isRetry,
+    this.detailedError,
+  });
+
+  final VoidCallback onPressed;
+  final bool isRetry;
+  final String? detailedError;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasError = detailedError != null && detailedError!.trim().isNotEmpty;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: GlassPanel(
+        margin: EdgeInsets.zero,
+        padding: const EdgeInsets.all(16),
+        borderRadius: 22,
+        opacity: 0.15,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              isRetry ? 'Retry download' : 'One-time setup',
+              style: const TextStyle(
+                color: GlassColors.textPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Tap to download Gemma 4 E2B (LiteRT-LM). Recommended: WiFi. '
+              'After install, the model runs entirely on-device.\n\n'
+              'Gemma is a gated model: build with '
+              '--dart-define=HUGGINGFACE_TOKEN=hf_... and accept the license '
+              'on the HuggingFace model page first.',
+              style: TextStyle(color: GlassColors.textSecondary, fontSize: 13),
+            ),
+            if (hasError) ...[
+              const SizedBox(height: 14),
+              _ErrorDetails(message: detailedError!),
+            ],
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: GestureDetector(
+                onTap: onPressed,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    color: GlassColors.emergency.withValues(alpha: 0.85),
+                  ),
+                  child: Text(
+                    isRetry ? 'Retry' : 'Download Gemma 4 E2B',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _IncompatibleHostPanel extends StatelessWidget {
+  const _IncompatibleHostPanel({required this.detailedError});
+
+  final String? detailedError;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasError =
+        detailedError != null && detailedError!.trim().isNotEmpty;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: GlassPanel(
+        margin: EdgeInsets.zero,
+        padding: const EdgeInsets.all(16),
+        borderRadius: 22,
+        opacity: 0.15,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Run on a physical iPhone',
+              style: TextStyle(
+                color: GlassColors.textPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Model is downloaded and cached. The iOS Simulator\'s Metal '
+              'driver does not support Argument Buffers Tier 2, which Gemma 4\'s '
+              'LiteRT-LM GPU kernels need. Real iPhones do — no further '
+              'download will be required when you re-launch on device.',
+              style: TextStyle(color: GlassColors.textSecondary, fontSize: 13),
+            ),
+            if (hasError) ...[
+              const SizedBox(height: 14),
+              _ErrorDetails(message: detailedError!),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorDetails extends StatelessWidget {
+  const _ErrorDetails({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: GlassColors.amber.withValues(alpha: 0.4),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Last error',
+            style: TextStyle(
+              color: GlassColors.amber,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.0,
+            ),
+          ),
+          const SizedBox(height: 6),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 160),
+            child: SingleChildScrollView(
+              child: Text(
+                message,
+                style: const TextStyle(
+                  color: GlassColors.textSecondary,
+                  fontSize: 11,
+                  height: 1.4,
+                  fontFamily: 'monospace',
+                ),
               ),
             ),
           ),
@@ -236,42 +912,38 @@ class _StatusBanner extends StatelessWidget {
   }
 }
 
-class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.content, required this.isUser});
+class _PreReadyPlaceholder extends StatelessWidget {
+  const _PreReadyPlaceholder({required this.stage});
 
-  final String content;
-  final bool isUser;
+  final _ModelStage stage;
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.8,
-        ),
-        decoration: BoxDecoration(
-          color: isUser
-              ? GlassColors.emergency.withValues(alpha: 0.22)
-              : Colors.white.withValues(alpha: 0.13),
-          borderRadius: BorderRadius.circular(20).copyWith(
-            bottomRight: isUser ? const Radius.circular(2) : null,
-            bottomLeft: !isUser ? const Radius.circular(2) : null,
-          ),
-          border: Border.all(
-            color: isUser
-                ? GlassColors.emergency.withValues(alpha: 0.36)
-                : Colors.white.withValues(alpha: 0.18),
-          ),
-        ),
+    final message = switch (stage) {
+      _ModelStage.checking => 'Looking for the local model...',
+      _ModelStage.needsDownload =>
+        'Once the model is installed, this chat will work fully offline. '
+            'You can still browse cached Manuals and the Newspaper now.',
+      _ModelStage.downloading =>
+        'Hang tight. The model only downloads once. '
+            'You can switch tabs while this finishes.',
+      _ModelStage.error =>
+        'Could not load Gemma 4 E2B. Cached manuals, safe places, and news remain available.',
+      _ModelStage.incompatibleHost =>
+        'Gemma 4 weights are downloaded and ready, but this host cannot run '
+            'the GPU kernels. Quit and re-run on a physical iPhone:\n\n'
+            'flutter run -d <iphone-udid> --dart-define=HUGGINGFACE_TOKEN=hf_...',
+      _ModelStage.ready => '',
+    };
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
         child: Text(
-          content,
+          message,
+          textAlign: TextAlign.center,
           style: const TextStyle(
-            color: GlassColors.textPrimary,
-            fontSize: 14,
-            height: 1.5,
+            color: GlassColors.textSecondary,
+            height: 1.45,
           ),
         ),
       ),
@@ -279,19 +951,292 @@ class _MessageBubble extends StatelessWidget {
   }
 }
 
-class _TypingIndicator extends StatelessWidget {
-  const _TypingIndicator();
+class _MessageList extends StatelessWidget {
+  const _MessageList({required this.messages, required this.onActionTap});
+
+  final List<_ChatMessage> messages;
+  final ValueChanged<_ChatMessage> onActionTap;
 
   @override
   Widget build(BuildContext context) {
-    return const Align(
-      alignment: Alignment.centerLeft,
-      child: Padding(
-        padding: EdgeInsets.only(bottom: 12),
-        child: Text(
-          'HAVEN is thinking...',
-          style: TextStyle(color: GlassColors.safe, fontSize: 12),
+    return ListView.builder(
+      padding: const EdgeInsets.only(top: 6, bottom: 16),
+      itemCount: messages.length,
+      itemBuilder: (context, index) {
+        final msg = messages[index];
+        if (msg.isAction) {
+          return _ActionCard(message: msg, onTap: () => onActionTap(msg));
+        }
+        return _MessageBubble(message: msg);
+      },
+    );
+  }
+}
+
+class _ActionCard extends StatelessWidget {
+  const _ActionCard({required this.message, required this.onTap});
+
+  final _ChatMessage message;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = message.actionCategory?.color ?? GlassColors.cyan;
+    final icon = switch (message.actionKind) {
+      _ActionKind.mapCategory ||
+      _ActionKind.mapPlace =>
+        Icons.map_outlined,
+      _ActionKind.settingsManual => Icons.menu_book_outlined,
+      null => Icons.touch_app_outlined,
+    };
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: GlassPanel(
+          margin: EdgeInsets.zero,
+          padding: const EdgeInsets.all(12),
+          borderRadius: 18,
+          opacity: 0.18,
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: color.withValues(alpha: 0.85),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.4),
+                  ),
+                ),
+                child: Icon(icon, color: Colors.white, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      message.content,
+                      style: const TextStyle(
+                        color: GlassColors.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    if ((message.actionSubtitle ?? '').isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        message.actionSubtitle!,
+                        style: const TextStyle(
+                          color: GlassColors.textSecondary,
+                          fontSize: 11,
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.arrow_forward_ios_rounded,
+                color: GlassColors.textTertiary,
+                size: 14,
+              ),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+}
+
+class _MessageBubble extends StatelessWidget {
+  const _MessageBubble({required this.message});
+
+  final _ChatMessage message;
+
+  @override
+  Widget build(BuildContext context) {
+    final showCursor = message.streaming && message.content.isEmpty;
+    return Align(
+      alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.8,
+        ),
+        decoration: BoxDecoration(
+          color: message.isUser
+              ? GlassColors.emergency.withValues(alpha: 0.22)
+              : Colors.white.withValues(alpha: 0.13),
+          borderRadius: BorderRadius.circular(20).copyWith(
+            bottomRight: message.isUser ? const Radius.circular(2) : null,
+            bottomLeft: !message.isUser ? const Radius.circular(2) : null,
+          ),
+          border: Border.all(
+            color: message.isUser
+                ? GlassColors.emergency.withValues(alpha: 0.36)
+                : Colors.white.withValues(alpha: 0.18),
+          ),
+        ),
+        child: showCursor
+            ? const Text(
+                'HAVEN is thinking...',
+                style: TextStyle(color: GlassColors.safe, fontSize: 12),
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    message.content,
+                    style: const TextStyle(
+                      color: GlassColors.textPrimary,
+                      fontSize: 14,
+                      height: 1.5,
+                    ),
+                  ),
+                  if (!message.isUser && message.metric != null) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.bolt_outlined,
+                          size: 12,
+                          color: GlassColors.safe.withValues(alpha: 0.8),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          message.metric!,
+                          style: TextStyle(
+                            color: GlassColors.safe.withValues(alpha: 0.9),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+class _Composer extends StatelessWidget {
+  const _Composer({
+    required this.controller,
+    required this.enabled,
+    required this.listening,
+    required this.voiceOutEnabled,
+    required this.onSend,
+    required this.onMicPressed,
+    required this.onMicReleased,
+    required this.onToggleVoiceOut,
+  });
+
+  final TextEditingController controller;
+  final bool enabled;
+  final bool listening;
+  final bool voiceOutEnabled;
+  final VoidCallback onSend;
+  final VoidCallback onMicPressed;
+  final VoidCallback onMicReleased;
+  final VoidCallback onToggleVoiceOut;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassPanel(
+      margin: EdgeInsets.zero,
+      padding: const EdgeInsets.all(10),
+      borderRadius: 28,
+      opacity: 0.2,
+      child: Row(
+        children: [
+          GlassIconButton(
+            onPressed: onToggleVoiceOut,
+            icon: voiceOutEnabled
+                ? Icons.volume_up_outlined
+                : Icons.volume_off_outlined,
+            color: voiceOutEnabled
+                ? GlassColors.safe
+                : GlassColors.textTertiary,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: listening
+                      ? GlassColors.emergency.withValues(alpha: 0.65)
+                      : Colors.white.withValues(alpha: 0.12),
+                  width: listening ? 1.5 : 1,
+                ),
+              ),
+              child: TextField(
+                controller: controller,
+                enabled: enabled,
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: listening
+                      ? 'Listening… release the mic to send'
+                      : 'Ask HAVEN or hold the mic to speak',
+                  hintStyle: const TextStyle(
+                    color: GlassColors.textTertiary,
+                    fontSize: 12,
+                  ),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                ),
+                onSubmitted: (_) => enabled ? onSend() : null,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            onTapDown: enabled ? (_) => onMicPressed() : null,
+            onTapUp: (_) => onMicReleased(),
+            onTapCancel: onMicReleased,
+            child: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: listening
+                    ? GlassColors.emergency.withValues(alpha: 0.85)
+                    : Colors.white.withValues(alpha: 0.12),
+                border: Border.all(
+                  color: listening
+                      ? Colors.white.withValues(alpha: 0.6)
+                      : Colors.white.withValues(alpha: 0.18),
+                ),
+              ),
+              child: Icon(
+                listening ? Icons.mic : Icons.mic_none,
+                color: listening ? Colors.white : GlassColors.textPrimary,
+                size: 22,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          GlassIconButton(
+            onPressed: enabled ? onSend : null,
+            icon: Icons.arrow_upward_rounded,
+            color: GlassColors.textPrimary,
+          ),
+        ],
       ),
     );
   }
