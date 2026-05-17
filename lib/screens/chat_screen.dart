@@ -61,11 +61,12 @@ CRITICAL RULES:
   bool _cpuFallbackAttempted = false;
   String? _gpuErrorMessage;
 
-  // Voice (push-to-talk + TTS readback)
+  // Voice (push-to-talk; TTS readback always on — users mute via volume).
   bool _listening = false;
-  bool _voiceOutEnabled = true;
 
   bool _sessionStartScheduled = false;
+
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -81,6 +82,7 @@ CRITICAL RULES:
   void dispose() {
     LocalAgentService.instance.removeListener(_onAgentChange);
     _controller.dispose();
+    _scrollController.dispose();
     _chat?.close();
     _model?.close();
     super.dispose();
@@ -301,6 +303,7 @@ CRITICAL RULES:
           if (!stopwatch.isRunning) stopwatch.start();
           tokenCount++;
           setState(() => placeholder.content += response.token);
+          _scrollToBottomSoon();
         }
       }
     } catch (e) {
@@ -360,6 +363,7 @@ CRITICAL RULES:
       _messages.add(aiMessage);
       _generating = true;
     });
+    _scrollToBottomSoon();
 
     // LiteRT-LM inference perf measurement. Start clock at first token so we
     // exclude prefill (which dominates on long prompts but is one-time).
@@ -382,6 +386,7 @@ CRITICAL RULES:
             if (!stopwatch.isRunning) stopwatch.start();
             tokenCount++;
             setState(() => aiMessage.content += response.token);
+            _scrollToBottomSoon();
           } else if (response is FunctionCallResponse) {
             pendingCalls.add(response);
           } else if (response is ParallelFunctionCallResponse) {
@@ -564,18 +569,22 @@ CRITICAL RULES:
     if (mounted) setState(() => _listening = false);
   }
 
-  void _toggleVoiceOut() {
-    setState(() => _voiceOutEnabled = !_voiceOutEnabled);
-    if (!_voiceOutEnabled) {
-      unawaited(VoiceService.instance.stopSpeaking());
-    }
-  }
-
   void _maybeSpeakReply(_ChatMessage message) {
-    if (!_voiceOutEnabled) return;
     final text = message.content.trim();
     if (text.isEmpty) return;
     unawaited(VoiceService.instance.speak(text));
+  }
+
+  void _scrollToBottomSoon() {
+    if (!_scrollController.hasClients) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   String _backendLabel() {
@@ -602,7 +611,11 @@ CRITICAL RULES:
         ),
         Expanded(
           child: _stage == _ModelStage.ready
-              ? _MessageList(messages: _messages, onActionTap: _handleActionTap)
+              ? _MessageList(
+                  messages: _messages,
+                  onActionTap: _handleActionTap,
+                  scrollController: _scrollController,
+                )
               : ListView(
                   padding: const EdgeInsets.only(bottom: 16),
                   children: [
@@ -626,15 +639,20 @@ CRITICAL RULES:
                 ),
         ),
         if (_stage == _ModelStage.ready)
-          _Composer(
-            controller: _controller,
-            enabled: !_generating,
-            listening: _listening,
-            voiceOutEnabled: _voiceOutEnabled,
-            onSend: _sendMessage,
-            onMicPressed: _startListening,
-            onMicReleased: _stopListening,
-            onToggleVoiceOut: _toggleVoiceOut,
+          Padding(
+            // Float the composer above the keyboard while leaving the floating
+            // tab bar at the real bottom of the screen (hidden by the keyboard).
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            child: _Composer(
+              controller: _controller,
+              enabled: !_generating,
+              listening: _listening,
+              onSend: _sendMessage,
+              onMicPressed: _startListening,
+              onMicReleased: _stopListening,
+            ),
           ),
       ],
     );
@@ -1026,14 +1044,20 @@ class _PreReadyPlaceholder extends StatelessWidget {
 }
 
 class _MessageList extends StatelessWidget {
-  const _MessageList({required this.messages, required this.onActionTap});
+  const _MessageList({
+    required this.messages,
+    required this.onActionTap,
+    required this.scrollController,
+  });
 
   final List<_ChatMessage> messages;
   final ValueChanged<_ChatMessage> onActionTap;
+  final ScrollController scrollController;
 
   @override
   Widget build(BuildContext context) {
     return ListView.builder(
+      controller: scrollController,
       padding: const EdgeInsets.only(top: 6, bottom: 16),
       itemCount: messages.length,
       itemBuilder: (context, index) {
@@ -1209,108 +1233,156 @@ class _Composer extends StatelessWidget {
     required this.controller,
     required this.enabled,
     required this.listening,
-    required this.voiceOutEnabled,
     required this.onSend,
     required this.onMicPressed,
     required this.onMicReleased,
-    required this.onToggleVoiceOut,
   });
 
   final TextEditingController controller;
   final bool enabled;
   final bool listening;
-  final bool voiceOutEnabled;
   final VoidCallback onSend;
   final VoidCallback onMicPressed;
   final VoidCallback onMicReleased;
-  final VoidCallback onToggleVoiceOut;
 
   @override
   Widget build(BuildContext context) {
     return GlassPanel(
       margin: EdgeInsets.zero,
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
       borderRadius: 28,
-      opacity: 0.2,
-      child: Row(
+      opacity: 0.22,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          GlassIconButton(
-            onPressed: onToggleVoiceOut,
-            icon: voiceOutEnabled
-                ? Icons.volume_up_outlined
-                : Icons.volume_off_outlined,
-            color: voiceOutEnabled
-                ? GlassColors.safe
-                : GlassColors.textTertiary,
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: listening
-                      ? GlassColors.emergency.withValues(alpha: 0.65)
-                      : Colors.white.withValues(alpha: 0.12),
-                  width: listening ? 1.5 : 1,
-                ),
-              ),
-              child: TextField(
-                controller: controller,
-                enabled: enabled,
-                style: const TextStyle(color: Colors.white, fontSize: 14),
-                decoration: InputDecoration(
-                  hintText: listening
-                      ? 'Listening… release the mic to send'
-                      : 'Ask HAVEN or hold the mic to speak',
-                  hintStyle: const TextStyle(
-                    color: GlassColors.textTertiary,
-                    fontSize: 12,
+          // Text input + send.
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.22),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.14),
+                    ),
                   ),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
+                  child: TextField(
+                    controller: controller,
+                    enabled: enabled,
+                    maxLines: 4,
+                    minLines: 1,
+                    textInputAction: TextInputAction.send,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    decoration: const InputDecoration(
+                      hintText: 'Ask HAVEN…',
+                      hintStyle: TextStyle(
+                        color: GlassColors.textTertiary,
+                        fontSize: 13,
+                      ),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                    ),
+                    onSubmitted: (_) => enabled ? onSend() : null,
                   ),
                 ),
-                onSubmitted: (_) => enabled ? onSend() : null,
               ),
-            ),
+              const SizedBox(width: 8),
+              GlassIconButton(
+                onPressed: enabled ? onSend : null,
+                icon: Icons.arrow_upward_rounded,
+                color: GlassColors.textPrimary,
+              ),
+            ],
           ),
-          const SizedBox(width: 6),
-          GestureDetector(
-            onTapDown: enabled ? (_) => onMicPressed() : null,
-            onTapUp: (_) => onMicReleased(),
-            onTapCancel: onMicReleased,
-            child: Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: listening
-                    ? GlassColors.emergency.withValues(alpha: 0.85)
-                    : Colors.white.withValues(alpha: 0.12),
-                border: Border.all(
-                  color: listening
-                      ? Colors.white.withValues(alpha: 0.6)
-                      : Colors.white.withValues(alpha: 0.18),
-                ),
-              ),
-              child: Icon(
-                listening ? Icons.mic : Icons.mic_none,
-                color: listening ? Colors.white : GlassColors.textPrimary,
-                size: 22,
-              ),
-            ),
-          ),
-          const SizedBox(width: 6),
-          GlassIconButton(
-            onPressed: enabled ? onSend : null,
-            icon: Icons.arrow_upward_rounded,
-            color: GlassColors.textPrimary,
+          const SizedBox(height: 12),
+          // Big push-to-talk pill: makes the "hold" affordance obvious.
+          _PushToTalkButton(
+            enabled: enabled,
+            listening: listening,
+            onPressed: onMicPressed,
+            onReleased: onMicReleased,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PushToTalkButton extends StatelessWidget {
+  const _PushToTalkButton({
+    required this.enabled,
+    required this.listening,
+    required this.onPressed,
+    required this.onReleased,
+  });
+
+  final bool enabled;
+  final bool listening;
+  final VoidCallback onPressed;
+  final VoidCallback onReleased;
+
+  @override
+  Widget build(BuildContext context) {
+    final activeColor = GlassColors.emergency;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: enabled ? (_) => onPressed() : null,
+      onTapUp: (_) => onReleased(),
+      onTapCancel: onReleased,
+      onLongPressStart: enabled ? (_) => onPressed() : null,
+      onLongPressEnd: (_) => onReleased(),
+      onLongPressCancel: onReleased,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(22),
+          color: listening
+              ? activeColor.withValues(alpha: 0.92)
+              : Colors.white.withValues(alpha: 0.10),
+          border: Border.all(
+            color: listening
+                ? Colors.white.withValues(alpha: 0.55)
+                : Colors.white.withValues(alpha: 0.22),
+            width: listening ? 2 : 1,
+          ),
+          boxShadow: listening
+              ? [
+                  BoxShadow(
+                    color: activeColor.withValues(alpha: 0.45),
+                    blurRadius: 18,
+                    spreadRadius: 2,
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              listening ? Icons.mic : Icons.mic_none_outlined,
+              color: listening ? Colors.white : GlassColors.textPrimary,
+              size: 22,
+            ),
+            const SizedBox(width: 10),
+            Text(
+              listening
+                  ? 'LISTENING — RELEASE TO SEND'
+                  : 'HOLD TO TALK',
+              style: TextStyle(
+                color: listening ? Colors.white : GlassColors.textPrimary,
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.4,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

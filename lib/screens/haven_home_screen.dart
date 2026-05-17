@@ -52,6 +52,12 @@ class _HavenHomeScreenState extends State<HavenHomeScreen> {
       builder: (context, index, _) {
         return Scaffold(
           backgroundColor: Colors.transparent,
+          // Don't shrink the body when the soft keyboard opens — that's what
+          // was lifting the floating tab bar above the keyboard. The chat
+          // composer pads itself with MediaQuery.viewInsets.bottom so the
+          // input still floats above the keyboard; tabs stay pinned at the
+          // real screen bottom (hidden behind the keyboard while typing).
+          resizeToAvoidBottomInset: false,
           body: GlassScaffold(
             child: SafeArea(
               bottom: false,
