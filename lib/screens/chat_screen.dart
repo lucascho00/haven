@@ -254,6 +254,11 @@ CRITICAL RULES:
       return;
     }
 
+    // Warm up STT + TTS + AVAudioSession now so the first assistant reply
+    // actually produces audible output, instead of going silent until the
+    // user happens to hold the mic for the first time.
+    unawaited(VoiceService.instance.ensureInitialised());
+
     final cpuNote = backend == PreferredBackend.cpu
         ? ' (CPU backend — responses will be much slower than on a real iPhone)'
         : '';
@@ -328,6 +333,7 @@ CRITICAL RULES:
                 '${(tokenCount / elapsed).toStringAsFixed(1)} tok/s · ${_backendLabel()}';
           }
         });
+        _maybeSpeakReply(placeholder);
       }
     }
   }

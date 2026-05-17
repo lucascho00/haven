@@ -65,7 +65,33 @@ class VoiceService {
         debugPrint('Voice/TTS init failed: $e');
       }
     }
+    // iOS: prime AVAudioSession so the first real speak() actually produces
+    // audible output. Without this, AVSpeechSynthesizer often stays silent
+    // until some other audio event (e.g. mic capture) activates the session.
+    if (_ttsInitialised && !_ttsPrimed) {
+      await _primeIosTts();
+    }
     return _sttInitialised;
+  }
+
+  bool _ttsPrimed = false;
+
+  Future<void> _primeIosTts() async {
+    if (!Platform.isIOS) {
+      _ttsPrimed = true;
+      return;
+    }
+    try {
+      await _tts.setLanguage('en-US');
+      // A single space is short enough to be inaudible but long enough to
+      // force AVAudioSession activation. After this, real speak() calls
+      // produce sound on the first try.
+      await _tts.speak(' ');
+      _ttsPrimed = true;
+      debugPrint('Voice/TTS audio session primed');
+    } catch (e) {
+      debugPrint('Voice/TTS prime failed: $e');
+    }
   }
 
   /// Force the iOS AVAudioSession into a category that lets TTS play even
