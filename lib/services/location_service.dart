@@ -138,6 +138,16 @@ class LocationService {
       } catch (e) {
         debugPrint('LocationService: reverse geocode failed — $e');
       }
+      // Reverse geocoding can fail (offline, rate-limited, no result for
+      // these coords). The downstream news / safe-place fetchers key off
+      // the city / country fields, so leaving them all null reduces to a
+      // generic "war OR disaster" query that returns whatever Iran /
+      // Ukraine headlines dominate the feed — which looks suspiciously
+      // like "the app is hardcoded to Iran" from a user perspective.
+      // Synthesise *something* readable from the coordinates so place
+      // terms always exist.
+      city ??= '${pos.latitude.toStringAsFixed(3)}°, '
+          '${pos.longitude.toStringAsFixed(3)}°';
       final resolved = AppLocation(
         latitude: pos.latitude,
         longitude: pos.longitude,

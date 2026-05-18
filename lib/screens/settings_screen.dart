@@ -1,7 +1,6 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
+import '../models/app_location.dart';
 import '../models/manual_item.dart';
 import '../services/location_service.dart';
 import '../services/navigation_service.dart';
@@ -57,23 +56,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
               'wartime context. Swap to another conflict zone or to your real '
               'GPS — nothing is hardcoded in the binary.',
         ),
+        _CurrentLocationCard(
+          location: HavenCache.getLastLocation(),
+          preset: LocationPreset.fromName(HavenCache.getLocationPreset()),
+        ),
         _LocationPresetCard(
           current: LocationPreset.fromName(HavenCache.getLocationPreset()),
           onChanged: (preset) async {
             await HavenCache.saveLocationPreset(preset.name);
-            // Kick a fresh news + safe-place pull for the new anchor.
-            unawaited(RefreshService().refreshAll());
-            // Make MapScreen recenter + reload.
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Resolving ${preset.displayName}…'),
+                  behavior: SnackBarBehavior.floating,
+                  duration: const Duration(seconds: 4),
+                ),
+              );
+            }
+            // Await so we can report the *actually resolved* location back
+            // to the user — critical when realGps falls back to Tehran
+            // because permission was denied or GPS timed out.
+            try {
+              await RefreshService().refreshAll();
+            } catch (_) {
+              // Surfaced below via the cached lastLocation read.
+            }
+            // Push fresh location + POIs into the Map tab.
             NavigationService.instance.invalidateLocation();
             if (!context.mounted) return;
             setState(() {});
+            final resolved = HavenCache.getLastLocation();
+            final resolvedLabel = resolved?.label ?? 'unknown';
+            final fellBack = preset == LocationPreset.realGps &&
+                resolved != null &&
+                resolved.latitude == LocationPreset.tehran.fixedLocation!.latitude;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
-                  'Switched to ${preset.displayName}. '
-                  'Map and Newspaper are refreshing for the new area.',
+                  fellBack
+                      ? '⚠️ GPS unavailable — fell back to Tehran. Check iOS '
+                          'Settings → Privacy → Location Services → HAVEN.'
+                      : 'Switched to $resolvedLabel. Map + Newspaper refreshed.',
                 ),
                 behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 5),
               ),
             );
           },
@@ -147,6 +173,83 @@ class _LiteRtFooter extends StatelessWidget {
               color: GlassColors.textSecondary,
               fontSize: 11,
               height: 1.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CurrentLocationCard extends StatelessWidget {
+  const _CurrentLocationCard({required this.location, required this.preset});
+
+  final AppLocation? location;
+  final LocationPreset preset;
+
+  @override
+  Widget build(BuildContext context) {
+    final loc = location;
+    final hasLoc = loc != null;
+    final label = hasLoc ? loc.label : 'no location resolved yet';
+    final coords = hasLoc
+        ? '${loc.latitude.toStringAsFixed(4)}, '
+              '${loc.longitude.toStringAsFixed(4)}'
+        : '—';
+    // Highlight when realGps was requested but we silently fell back to
+    // the Tehran fallback (GPS off / permission denied / geocoder failed).
+    final fellBack = preset == LocationPreset.realGps &&
+        hasLoc &&
+        loc.latitude == LocationPreset.tehran.fixedLocation!.latitude &&
+        loc.longitude == LocationPreset.tehran.fixedLocation!.longitude;
+    return GlassPanel(
+      borderRadius: 22,
+      opacity: fellBack ? 0.22 : 0.14,
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            fellBack ? Icons.warning_amber_rounded : Icons.place_outlined,
+            color: fellBack ? GlassColors.amber : GlassColors.cyan,
+            size: 22,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Now using: $label',
+                  style: const TextStyle(
+                    color: GlassColors.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  coords,
+                  style: const TextStyle(
+                    color: GlassColors.textSecondary,
+                    fontSize: 11,
+                    fontFamily: 'Menlo',
+                  ),
+                ),
+                if (fellBack) ...[
+                  const SizedBox(height: 6),
+                  const Text(
+                    '⚠ Real GPS not available — fell back to Tehran. Grant '
+                    'location permission in iOS Settings to use your real '
+                    'coordinates.',
+                    style: TextStyle(
+                      color: GlassColors.amber,
+                      fontSize: 11,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         ],

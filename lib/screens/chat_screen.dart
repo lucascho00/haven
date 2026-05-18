@@ -76,6 +76,13 @@ CRITICAL RULES:
     LocalAgentService.instance.addListener(_onAgentChange);
     // Initial sync — captures state if main.dart's kickoff already finished.
     _onAgentChange();
+    // When the user switches Demo Location preset in Settings, the cached
+    // headlines / safe places / location label change — but our agent's
+    // systemInstruction was built from the *old* context at chat creation.
+    // Reset the chat so the next reply is grounded in the new region.
+    NavigationService.instance.locationInvalidationTick.addListener(
+      _onLocationChanged,
+    );
     // Idempotent: returns the in-flight future if main.dart already started one.
     unawaited(LocalAgentService.instance.ensureInstalled());
   }
@@ -83,11 +90,21 @@ CRITICAL RULES:
   @override
   void dispose() {
     LocalAgentService.instance.removeListener(_onAgentChange);
+    NavigationService.instance.locationInvalidationTick.removeListener(
+      _onLocationChanged,
+    );
     _controller.dispose();
     _scrollController.dispose();
     _chat?.close();
     _model?.close();
     super.dispose();
+  }
+
+  void _onLocationChanged() {
+    if (!mounted) return;
+    if (_chat == null) return; // no live session to reset
+    debugPrint('Chat: location preset changed — resetting session');
+    unawaited(_resetChat());
   }
 
   void _onAgentChange() {
