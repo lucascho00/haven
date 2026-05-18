@@ -39,6 +39,9 @@ class _MapScreenState extends State<MapScreen> {
       _refresh();
     }
     NavigationService.instance.mapFocus.addListener(_onMapFocusIntent);
+    NavigationService.instance.locationInvalidationTick.addListener(
+      _onLocationInvalidated,
+    );
     // Apply any focus that was already set before this screen mounted.
     WidgetsBinding.instance.addPostFrameCallback((_) => _onMapFocusIntent());
   }
@@ -46,8 +49,16 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void dispose() {
     NavigationService.instance.mapFocus.removeListener(_onMapFocusIntent);
+    NavigationService.instance.locationInvalidationTick.removeListener(
+      _onLocationInvalidated,
+    );
     _mapController.dispose();
     super.dispose();
+  }
+
+  void _onLocationInvalidated() {
+    if (!mounted) return;
+    _refresh();
   }
 
   void _onMapFocusIntent() {

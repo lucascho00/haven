@@ -40,6 +40,9 @@ class NavigationService {
   final ValueNotifier<int> tabIndex = ValueNotifier<int>(HavenTabs.map);
   final ValueNotifier<MapFocusIntent?> mapFocus =
       ValueNotifier<MapFocusIntent?>(null);
+  /// Bumped whenever the location preset (or any other cache-invalidating
+  /// setting) changes; MapScreen listens to it and re-runs its refresh.
+  final ValueNotifier<int> locationInvalidationTick = ValueNotifier<int>(0);
 
   void goToMap({PlaceCategory? category, String? placeId, String? label}) {
     mapFocus.value = MapFocusIntent(
@@ -56,5 +59,11 @@ class NavigationService {
 
   void clearMapFocus() {
     mapFocus.value = null;
+  }
+
+  /// Settings calls this after persisting a new LocationPreset so the Map /
+  /// Newspaper / Agent tabs know to refetch instead of showing stale data.
+  void invalidateLocation() {
+    locationInvalidationTick.value++;
   }
 }

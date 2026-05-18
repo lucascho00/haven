@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/manual_item.dart';
 import '../services/local_agent_service.dart';
+import '../services/location_service.dart';
+import '../services/navigation_service.dart';
 import '../services/news_service.dart';
+import '../services/refresh_service.dart';
 import '../storage/haven_cache.dart';
 import '../ui/glass_theme.dart';
 
@@ -62,6 +67,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
+        ),
+        const GlassSectionHeader(
+          title: 'Demo Location',
+          subtitle:
+              'Tehran is the default scenario, picked to demonstrate a real '
+              'wartime context. Swap to another conflict zone or to your real '
+              'GPS — nothing is hardcoded in the binary.',
+        ),
+        _LocationPresetCard(
+          current: LocationPreset.fromName(HavenCache.getLocationPreset()),
+          onChanged: (preset) async {
+            await HavenCache.saveLocationPreset(preset.name);
+            // Kick a fresh news + safe-place pull for the new anchor.
+            unawaited(RefreshService().refreshAll());
+            // Make MapScreen recenter + reload.
+            NavigationService.instance.invalidateLocation();
+            if (!context.mounted) return;
+            setState(() {});
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Switched to ${preset.displayName}. '
+                  'Map and Newspaper are refreshing for the new area.',
+                ),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          },
         ),
         const GlassSectionHeader(
           title: 'Local Agent Backend',
@@ -155,6 +188,120 @@ class _LiteRtFooter extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _LocationPresetCard extends StatelessWidget {
+  const _LocationPresetCard({
+    required this.current,
+    required this.onChanged,
+  });
+
+  final LocationPreset current;
+  final ValueChanged<LocationPreset> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassPanel(
+      borderRadius: 22,
+      opacity: 0.16,
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        children: [
+          for (final preset in LocationPreset.values)
+            _LocationOption(
+              preset: preset,
+              selected: preset == current,
+              onTap: () => onChanged(preset),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LocationOption extends StatelessWidget {
+  const _LocationOption({
+    required this.preset,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final LocationPreset preset;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = preset == LocationPreset.realGps
+        ? Icons.gps_fixed
+        : Icons.location_city_outlined;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          color: selected
+              ? GlassColors.emergency.withValues(alpha: 0.22)
+              : Colors.white.withValues(alpha: 0.05),
+          border: Border.all(
+            color: selected
+                ? GlassColors.emergency.withValues(alpha: 0.6)
+                : Colors.white.withValues(alpha: 0.12),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              selected
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              color: selected
+                  ? GlassColors.emergency
+                  : GlassColors.textTertiary,
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Icon(
+              icon,
+              color: selected ? GlassColors.textPrimary : GlassColors.textTertiary,
+              size: 18,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    preset.displayName,
+                    style: TextStyle(
+                      color: selected
+                          ? GlassColors.textPrimary
+                          : GlassColors.textSecondary,
+                      fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    preset.subtitle,
+                    style: const TextStyle(
+                      color: GlassColors.textTertiary,
+                      fontSize: 11,
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

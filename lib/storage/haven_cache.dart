@@ -13,6 +13,7 @@ class HavenCache {
   static const _locationKey = 'last_location';
   static const _refreshKey = 'last_refresh';
   static const _backendKey = 'agent_backend';
+  static const _locationPresetKey = 'location_preset';
 
   static Future<void> init({String? path}) async {
     if (path == null) {
@@ -131,5 +132,19 @@ class HavenCache {
 
   static Future<void> saveAgentBackend(String backend) async {
     await _settings.put(_backendKey, {'value': backend});
+  }
+
+  /// Selected demo location preset. One of: 'tehran', 'kyiv', 'gaza',
+  /// 'realGps'. Defaults to 'tehran' so the demo always opens in a war-zone
+  /// context (Iran). Switching the preset re-roots the map, news, and AI
+  /// agent context to the chosen city.
+  static String getLocationPreset() {
+    final entry = _settings.get(_locationPresetKey);
+    final value = entry?['value'] as String?;
+    return value ?? 'tehran';
+  }
+
+  static Future<void> saveLocationPreset(String preset) async {
+    await _settings.put(_locationPresetKey, {'value': preset});
   }
 }

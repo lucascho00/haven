@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang xml:lang>
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>HAVEN — The 911 you can&#39;t call</title>
+  <style>
+
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+
+ul.task-list[class]{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+font-size: inherit;
+width: 0.8em;
+margin: 0 0.8em 0.2em -1.6em;
+vertical-align: middle;
+}
+.display.math{display: block; text-align: center; margin: 0.5rem auto;}
+</style>
+  <style type="text/css">html { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; }
+body {
+max-width: 780px;
+margin: 48px auto;
+padding: 0 24px;
+color: #1F2937;
+line-height: 1.55;
+font-size: 15.5px;
+}
+h1 { font-size: 28px; margin: 1.3em 0 0.4em; letter-spacing: -0.4px; }
+h2 { font-size: 20px; margin: 1.8em 0 0.5em; border-bottom: 1px solid #E5E7EB; padding-bottom: 4px; }
+h3 { font-size: 16px; margin: 1.3em 0 0.4em; }
+p, li { margin: 0.5em 0; }
+hr { border: none; border-top: 1px solid #E5E7EB; margin: 2em 0; }
+table {
+border-collapse: collapse;
+margin: 1em 0;
+width: 100%;
+}
+th, td {
+border: 1px solid #D1D5DB;
+padding: 8px 12px;
+text-align: left;
+vertical-align: top;
+font-size: 14px;
+}
+th { background: #F3F4F6; font-weight: 700; }
+code {
+font-family: "SF Mono", Menlo, Consolas, monospace;
+background: #F3F4F6;
+padding: 1px 5px;
+border-radius: 3px;
+font-size: 0.92em;
+}
+pre {
+background: #F8FAFC;
+border: 1px solid #E5E7EB;
+border-radius: 6px;
+padding: 12px 14px;
+overflow-x: auto;
+font-size: 12.5px;
+line-height: 1.45;
+}
+pre code { background: transparent; padding: 0; font-size: inherit; }
+strong { color: #111827; }
+a { color: #1D4ED8; }
+blockquote {
+border-left: 3px solid #9CA3AF;
+margin: 0.8em 0;
+padding: 0.2em 0 0.2em 16px;
+color: #4B5563;
+}
+</style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">HAVEN — The 911 you can&#39;t call</h1>
+</header>
+<h1 id="haven-the-911-you-cant-call">HAVEN — The 911 you can’t call</h1>
+<p><strong>Offline emergency aid powered by on-device Gemma 4 (E2B /
+LiteRT-LM)</strong></p>
+<p><strong>Tracks:</strong> Main Track · Impact: Global Resilience ·
+Special Tech: LiteRT</p>
+<hr />
+<h2 id="the-911-you-cant-call">The 911 you can’t call</h2>
+<p>War zones share a brutal pattern: the moment people need information
+the most — air raid sirens, an injury, blocked roads, jammed networks —
+is the moment information stops flowing. Cellular gets jammed or blacked
+out. Hospital lines saturate. Cloud-hosted AI assistants are useless
+without a connection, and the assumption that someone is sitting at a
+keyboard to type a query feels naive when you’re hurt or hiding in a
+basement.</p>
+<p>HAVEN is built around the opposite assumption: the model lives
+entirely on the phone, the city’s map and recent news are pre-cached,
+and the user can speak to it in their own language without lifting a
+hand from a wound. It’s an emergency aid app whose AI never needs to
+call home.</p>
+<h2 id="what-haven-is">What HAVEN is</h2>
+<p>A Flutter iPhone/Android app with four tabs:</p>
+<ul>
+<li><strong>Map</strong> — offline OSM tiles, 100 hand-curated Tehran
+POIs (hospitals, embassies, shelters, schools, fuel, transit) layered
+with whatever Overpass returns at refresh time, magnetometer-driven
+compass.</li>
+<li><strong>Newspaper</strong> — cached local reports from Google News
+RSS, GDELT, and GDACS with extracted article bodies; tap any source URL
+to open in the system browser.</li>
+<li><strong>Agent</strong> — on-device Gemma 4 E2B chat with voice
+in/out, six native-function-calling tools, and tool→UI navigation
+cards.</li>
+<li><strong>Settings</strong> — survival manuals, news-source toggles, a
+Gemma backend selector (Auto / GPU / CPU), and a <strong>Location preset
+chooser</strong> (Tehran / Kyiv / Gaza / <em>Use my real GPS</em>).</li>
+</ul>
+<p>Everything in the Agent tab — prompts, responses, cached context,
+function calls, voice — happens locally on the phone. No prompt, no
+response, no cached headline, and no user query ever leaves the
+device.</p>
+<h3 id="why-tehran-and-why-it-isnt-hardcoded">Why Tehran, and why it
+isn’t hardcoded</h3>
+<p>The app opens in <strong>Tehran, Iran</strong> by default — the most
+concrete current war-context narrative for the demo: active conflict,
+daily news, dense urban POIs, and a multilingual user base. The 100
+bundled POIs are Tehran-anchored for the same reason.</p>
+<p>But Tehran is a <strong>default, not a hardcode</strong>. Settings →
+<em>Demo Location</em> re-anchors the entire app to <strong>Kyiv,
+Ukraine</strong> (armed conflict), <strong>Gaza City, Palestine</strong>
+(humanitarian crisis), or <strong>Use my real GPS</strong> (Geolocator +
+reverse-geocoded labels, with a Tehran fallback if permission is
+denied). Switching the preset triggers map re-fetch + Newspaper repull +
+Agent context rebuild in one tap — the difference between <em>“a demo
+that only works in one city”</em> and <em>“a real tool with a strong
+demo default”</em>.</p>
+<h2 id="architecture">Architecture</h2>
+<pre><code>┌─────────────────────────────────────────────────────────────┐
+│  Flutter UI                                                 │
+│  Map · Newspaper · Agent (chat + voice) · Settings          │
+└──────────┬──────────────────────────────────┬───────────────┘
+           │                                  │
+   ┌───────▼──────────┐                ┌──────▼───────────┐
+   │ flutter_gemma    │                │ Hive on-disk     │
+   │ 0.15 + Dart FFI  │                │ cache            │
+   │ to LiteRT-LM     │                │  · news          │
+   └───────┬──────────┘                │  · safe places   │
+           │                           │  · manuals       │
+           ▼                           │  · settings      │
+   ┌────────────────────┐              └──────────────────┘
+   │ LiteRT-LM SDK      │
+   │ (Google AI Edge)   │
+   └─────────┬──────────┘
+             │
+   ┌─────────▼────────────────┐
+   │ Metal (iOS) · OpenCL     │
+   │ (Android) · CPU fallback │
+   └──────────────────────────┘</code></pre>
+<p>Network calls only happen at refresh time: news endpoints, Overpass
+with two mirror fallbacks for safe places, OSRM for routes. After one
+successful online refresh, every map marker, every headline, and every
+manual step is on disk. The Gemma 4 weights themselves (~1.5 GB
+<code>.litertlm</code>) download once on first launch, gated by a
+HuggingFace token loaded from a gitignored <code>.env</code>.</p>
+<h2 id="how-haven-uses-gemma-4">How HAVEN uses Gemma 4</h2>
+<h3 id="native-function-calling-six-tools">Native function calling (six
+tools)</h3>
+<p>We declare six locally-executed tools in
+<code>ai_tools_service.dart</code> with JSON-schema parameters:</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>get_safe_places(category?, max?)</code></td>
+<td>List cached POIs by category</td>
+</tr>
+<tr>
+<td><code>find_nearest(category)</code></td>
+<td>Single closest match</td>
+</tr>
+<tr>
+<td><code>get_news_article(query)</code></td>
+<td>Full body of one cached article</td>
+</tr>
+<tr>
+<td><code>summarize_news(topic, max?)</code></td>
+<td>Multi-source distillation</td>
+</tr>
+<tr>
+<td><code>assess_current_risks()</code></td>
+<td>Keyword scan over headlines</td>
+</tr>
+<tr>
+<td><code>get_manual_steps(manual_id)</code></td>
+<td>Full survival manual content</td>
+</tr>
+</tbody>
+</table>
+<p>All run against the local Hive cache, never the network. When the
+chat stream emits a <code>FunctionCallResponse</code>, we dispatch the
+tool, send the JSON result back as a <code>Message.toolResponse</code>,
+and resume generation. Capped at four iterations to prevent runaway
+loops.</p>
+<p>The user-visible payoff: ask <em>“where is the nearest
+hospital?”</em> and the model emits
+<code>find_nearest(category: &quot;hospital&quot;)</code>, we hand back a real
+Tehran address, and a tappable card appears in the chat — <em>“Show
+Tehran Heart Center on map”</em> — that switches to the Map tab
+pre-filtered to hospitals. The agent commands the rest of the app, not
+just the chat bubble.</p>
+<h3 id="multilingual">Multilingual</h3>
+<p>Gemma 4 is multilingual out of the box. Our system instruction
+explicitly nudges:</p>
+<blockquote>
+<p>ALWAYS respond in the user’s input language. If they write in Persian
+(فارسی), reply in Persian. If they write in Korean (한국어), reply in
+Korean.</p>
+</blockquote>
+<p>A user in Tehran can ask in Persian and get Persian back, citing
+cached local data. The compact system context (location + 8 headlines +
+8 safe-place names + manual titles — ~700 tokens total) is set once at
+chat creation so it lives in the KV cache instead of being
+re-transmitted per turn. Without this discipline we were crashing the
+simulator at turn three from KV-cache blowup.</p>
+<h3 id="voice-in-voice-out">Voice in / voice out</h3>
+<p>The mic is a push-to-talk pill (<em>HOLD TO TALK</em>) wired through
+<code>speech_to_text</code>. TTS readback runs <code>flutter_tts</code>
+and auto-detects Persian / Korean / English script per reply, switching
+the OS voice accordingly. A one-time silent prime utterance activates
+the iOS <code>AVAudioSession</code> at app start so the very first TTS
+reply is audible without requiring a prior mic interaction — a known iOS
+quirk that took us a day to track down.</p>
+<h3 id="proactive-situation-read">Proactive situation read</h3>
+<p>The first thing the user sees in the Agent tab is a synthetic first
+turn the app fires automatically the moment the Gemma session is ready:
+<em>“Top risks today / Nearest safe places / Most relevant manual”</em>,
+three bullets, grounded in the cached context. No typing required. This
+is the “agentic retrieval” the hackathon brief names.</p>
+<h2 id="litert-lm-integration">LiteRT-LM integration</h2>
+<p>HAVEN is built on <strong>Google AI Edge’s LiteRT-LM SDK</strong>
+end-to-end. We use the <code>.litertlm</code> weights published by
+<code>litert-community/gemma-4-E2B-it-litert-lm</code>, loaded through
+<code>flutter_gemma 0.15</code>’s LiteRT-LM FFI client
+(<code>LiteRtLmFfiClient.initialize</code>). The accelerator selection —
+Metal on iOS, OpenCL on Android, with automatic CPU fallback — comes
+directly from LiteRT’s registry. Settings exposes the choice to the user
+(Auto / GPU only / CPU only) backed by the LiteRT
+<code>PreferredBackend</code> enum.</p>
+<p>Native function calling routes through LiteRT-LM’s
+<code>tools_json</code> mechanism rather than regex-parsing the model
+output; the SDK separates
+<code>&lt;|tool_call&gt;…&lt;tool_call|&gt;</code> blocks from
+natural-language tokens, which we surface as
+<code>FunctionCallResponse</code> events in the chat stream.</p>
+<p>Every completed reply shows an inference perf chip: <em>“12.4 tok/s ·
+GPU(Metal) via LiteRT-LM”</em> — measured from first-token to
+stream-done, prefill excluded. On an iPhone 16e the GPU path holds
+~10–15 tok/s; the CPU fallback is ~2 tok/s — still usable in a pinch and
+lifesaving when the GPU path is unavailable.</p>
+<h2 id="challenges-we-hit-and-what-we-did-about-them">Challenges we hit
+(and what we did about them)</h2>
+<ul>
+<li><strong>iOS Simulator Metal binding limit.</strong> The simulator’s
+Metal driver doesn’t support Argument Buffers Tier 2, capping
+texture-binding index at 30. Gemma 4’s prefill shader needs binding 31.
+We added explicit GPU → CPU fallback plus an in-app diagnostic that
+shows both errors so a corrupt file is distinguishable from an
+incompatible host.</li>
+<li><strong>KV cache blowup at turn 3–4.</strong> We were re-injecting
+the cached context with every user message, ballooning history past
+<code>maxTokens</code> and crashing the simulator. Moved the static
+context into <code>systemInstruction</code> (sent once, stays in the KV
+cache), bumped <code>maxTokens</code> 2048 → 4096, added a Reset Chat
+button on the status banner.</li>
+<li><strong>AVAudioSession lazy activation.</strong> TTS was silent
+until the mic was used once. iOS doesn’t activate the session until
+<em>something</em> asks. Fix: a single inaudible-whitespace TTS call at
+session prep to prime the audio session.</li>
+<li><strong>Overpass rate-limiting.</strong> Public Overpass throttles
+certain regions; refresh would silently return zero results. We bundled
+100 hand-curated Tehran POIs into the binary so the map always has data,
+plus added a three-mirror endpoint fallback
+(<code>overpass-api.de</code> → <code>kumi.systems</code> →
+<code>openstreetmap.fr</code>) for fresh pulls.</li>
+<li><strong>Tool-call echoes leaking into the chat.</strong> The
+LiteRT-LM SDK normally parses <code>&lt;|tool_call&gt;</code> blocks
+before they reach Dart, but occasionally a fragment slipped through as
+plain <code>TextResponse</code>. Added a per-turn echo filter that
+detects the start of a tool-call JSON blob and drops every subsequent
+token for the rest of that turn.</li>
+</ul>
+<h2 id="whats-next">What’s next</h2>
+<p>A custom Unsloth fine-tune on FEMA / WHO / ICRC corpora targeted at
+the <strong>Unsloth Special Tech</strong> track, and an E4B vision
+upgrade so users can photograph an injury and get an assessment. The
+architecture is already wired for both — <code>LocalAgentService</code>
+abstracts the model identity, and the function-calling layer would
+simply gain new vision-aware tools. Future location presets are also one
+enum value away: the <code>LocationPreset</code> enum is open-set, so
+dropping in <em>Khartoum, Sudan</em> or <em>Beirut, Lebanon</em> is a
+coordinate pair and a Settings entry.</p>
+<hr />
+<p><strong>Repo:</strong> https://github.com/lucascho00/haven
+<strong>Video:</strong> <em>(YouTube link)</em> <strong>Live
+demo:</strong> <em>(TestFlight build link)</em></p>
+</body>
+</html>
