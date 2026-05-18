@@ -191,7 +191,18 @@ class _MapScreenState extends State<MapScreen> {
               minZoom: 4,
               maxZoom: 18,
               interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+                // Explicit gesture set:
+                //   · 1-finger drag pans the map
+                //   · pinch (2-finger) zooms
+                //   · double-tap zooms in one level
+                //   · fling momentum after release
+                // Deliberately omitted: rotate, scrollWheelZoom, pinchMove,
+                // and doubleTapDragZoom (the tap-then-1-finger-drag gesture
+                // that was making "I'm dragging" feel like "I'm zooming").
+                flags: InteractiveFlag.drag |
+                    InteractiveFlag.flingAnimation |
+                    InteractiveFlag.pinchZoom |
+                    InteractiveFlag.doubleTapZoom,
               ),
             ),
             children: [
