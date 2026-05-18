@@ -688,10 +688,15 @@ CRITICAL RULES:
         ),
         if (_stage == _ModelStage.ready)
           Padding(
-            // Float the composer above the keyboard while leaving the floating
-            // tab bar at the real bottom of the screen (hidden by the keyboard).
+            // HavenHomeScreen already pads the IndexedStack with 104 px at the
+            // bottom (room for the floating tab bar). When the soft keyboard
+            // opens we only need to lift the composer by the *difference*
+            // between the keyboard height and that existing padding, otherwise
+            // the composer floats in the middle of the screen with a 104 px
+            // gap between it and the keyboard.
             padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
+              bottom: (MediaQuery.of(context).viewInsets.bottom - 104.0)
+                  .clamp(0.0, double.infinity),
             ),
             child: _Composer(
               controller: _controller,
