@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/core/api/flutter_gemma.dart';
 import 'package:flutter_gemma/core/model.dart';
 import 'package:flutter_gemma/pigeon.g.dart' show PreferredBackend;
+import 'package:path_provider/path_provider.dart';
 
 import '../storage/haven_cache.dart';
 
@@ -97,8 +99,34 @@ class LocalAgentService extends ChangeNotifier {
   Future<void> _install() async {
     _error = null;
     _setStage(AgentInstallStage.checking);
-    debugPrint('LocalAgent: checking isModelInstalled($modelFile)…');
 
+    // 1. Disk-first short-circuit. iOS preserves the app's Documents
+    //    directory across same-bundle-ID reinstalls, but flutter_gemma's
+    //    in-memory install registry resets on every launch — so isModelInstalled
+    //    would return false even when the 1.5 GB .litertlm is still sitting
+    //    on disk from the last run. Re-register it via `.fromFile()` instead
+    //    of redownloading. This is what makes a reinstall fast.
+    final existingPath = await _existingModelPath();
+    if (existingPath != null) {
+      try {
+        debugPrint('LocalAgent: registering cached weights at $existingPath');
+        await FlutterGemma.installModel(
+          modelType: ModelType.gemma4,
+          fileType: ModelFileType.litertlm,
+        ).fromFile(existingPath).install();
+        debugPrint('LocalAgent: cached weights registered, skipping download');
+        _setStage(AgentInstallStage.installed);
+        return;
+      } catch (e) {
+        debugPrint(
+          'LocalAgent: registering cached file failed ($e) — '
+          'will fall through to a fresh download',
+        );
+      }
+    }
+
+    // 2. Otherwise consult flutter_gemma's registry; if it already considers
+    //    the model installed (rare without a cached file but possible), use it.
     bool installed;
     try {
       installed = await FlutterGemma.isModelInstalled(modelFile);
@@ -108,12 +136,12 @@ class LocalAgentService extends ChangeNotifier {
       return;
     }
     debugPrint('LocalAgent: isModelInstalled returned $installed');
-
     if (installed) {
       _setStage(AgentInstallStage.installed);
       return;
     }
 
+    // 3. Fresh download as a last resort.
     _progress = 0;
     _setStage(AgentInstallStage.downloading);
     debugPrint('LocalAgent: starting download from $modelUrl');
@@ -128,7 +156,6 @@ class LocalAgentService extends ChangeNotifier {
           .withProgress((p) {
             _progress = p;
             notifyListeners();
-            // Log every ~10% so we can confirm progress on device.
             if (p - lastLogged >= 10 || p == 100) {
               lastLogged = p;
               debugPrint('LocalAgent: download progress $p%');
@@ -145,6 +172,32 @@ class LocalAgentService extends ChangeNotifier {
         'accept the model license at huggingface.co/litert-community/'
         'gemma-4-E2B-it-litert-lm.',
       );
+    }
+  }
+
+  /// Returns the absolute path to a cached .litertlm in the app's documents
+  /// directory if it exists and looks complete (>500 MB sanity floor —
+  /// anything smaller is likely a stale half-download or an HF error page).
+  Future<String?> _existingModelPath() async {
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final file = File('${docs.path}/$modelFile');
+      if (!await file.exists()) return null;
+      final size = await file.length();
+      if (size < 500 * 1024 * 1024) {
+        debugPrint(
+          'LocalAgent: cached file too small ($size bytes), ignoring',
+        );
+        return null;
+      }
+      debugPrint(
+        'LocalAgent: found cached weights ${file.path} '
+        '(${(size / 1024 / 1024).round()} MB)',
+      );
+      return file.path;
+    } catch (e) {
+      debugPrint('LocalAgent: failed to inspect existing model: $e');
+      return null;
     }
   }
 

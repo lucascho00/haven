@@ -43,6 +43,10 @@ dependencies:
   # Magnetometer-driven compass heading for the map center button.
   flutter_compass: ^0.8.1
 
+  # Resolving the app documents dir so we can reuse a cached Gemma weights
+  # file across reinstalls without redownloading 1.5 GB every time.
+  path_provider: ^2.1.4
+
   # Markdown rendering for AI responses (bullets, bold, links, code blocks).
   flutter_markdown: ^0.7.4
 
