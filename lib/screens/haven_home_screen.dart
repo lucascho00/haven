@@ -128,7 +128,7 @@ class _GlassHeader extends StatelessWidget {
               ),
               border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
             ),
-            child: const Icon(Icons.shield_outlined, color: Colors.white),
+            child: const Icon(Icons.medical_services, color: Colors.white),
           ),
           const SizedBox(width: 12),
           Expanded(
