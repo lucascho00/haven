@@ -1,0 +1,44 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgD" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0A1530"/>
+      <stop offset="1" stop-color="#1B5E20"/>
+    </linearGradient>
+    <linearGradient id="pinD" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FF5252"/>
+      <stop offset="1" stop-color="#B71C1C"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bgD)"/>
+
+  <!-- Concentric "ping" rings under the pin — subtle radar effect -->
+  <g fill="none" stroke="white" stroke-width="4">
+    <circle cx="512" cy="800" r="60" opacity="0.35"/>
+    <circle cx="512" cy="800" r="110" opacity="0.20"/>
+    <circle cx="512" cy="800" r="160" opacity="0.10"/>
+  </g>
+
+  <!-- Map pin (teardrop) -->
+  <path d="M512 140
+           C 314 140 232 296 232 408
+           C 232 560 412 700 504 808
+           C 508 814 516 814 520 808
+           C 612 700 792 560 792 408
+           C 792 296 710 140 512 140 Z"
+        fill="url(#pinD)"
+        stroke="white"
+        stroke-width="16"
+        stroke-linejoin="round"/>
+
+  <!-- White inner disc -->
+  <circle cx="512" cy="400" r="138" fill="white"/>
+
+  <!-- Heartbeat / pulse line inside the disc -->
+  <polyline
+        points="392,400 446,400 472,330 502,470 532,290 562,400 632,400"
+        fill="none"
+        stroke="#E53935"
+        stroke-width="18"
+        stroke-linejoin="round"
+        stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,33 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgC" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#E53935"/>
+      <stop offset="1" stop-color="#8E0E0E"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bgC)"/>
+
+  <!-- Outer hexagon -->
+  <polygon points="512,128 824,308 824,716 512,896 200,716 200,308"
+           fill="none"
+           stroke="white"
+           stroke-width="28"
+           stroke-linejoin="round"
+           opacity="0.92"/>
+
+  <!-- Subtle inner hexagon (frosted ring) -->
+  <polygon points="512,200 752,338 752,686 512,824 272,686 272,338"
+           fill="white"
+           opacity="0.08"/>
+
+  <!-- "H" letterform -->
+  <g fill="white">
+    <rect x="362" y="320" width="78" height="384" rx="6"/>
+    <rect x="584" y="320" width="78" height="384" rx="6"/>
+    <rect x="362" y="476" width="300" height="72" rx="6"/>
+  </g>
+
+  <!-- Small red dot on the crossbar — emergency accent -->
+  <circle cx="512" cy="512" r="22" fill="#E53935"/>
+  <circle cx="512" cy="512" r="22" fill="none" stroke="white" stroke-width="5"/>
+</svg>

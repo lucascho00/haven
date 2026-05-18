@@ -1,0 +1,48 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgM" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1B2C4F"/>
+      <stop offset="1" stop-color="#070D22"/>
+    </linearGradient>
+    <linearGradient id="caseM" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EF3C3C"/>
+      <stop offset="1" stop-color="#B71C1C"/>
+    </linearGradient>
+    <radialGradient id="glowM" cx="0.5" cy="0.6" r="0.55">
+      <stop offset="0" stop-color="#EF3C3C" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#EF3C3C" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bgM)"/>
+
+  <!-- Warm glow under the kit -->
+  <rect width="1024" height="1024" fill="url(#glowM)"/>
+
+  <!-- Carry handle -->
+  <rect x="380" y="180" width="264" height="80" rx="38"
+        fill="#0F1B3A" stroke="#80DEEA" stroke-width="6"/>
+  <rect x="430" y="208" width="164" height="24" rx="10" fill="#070D22"/>
+
+  <!-- Kit case -->
+  <rect x="180" y="260" width="664" height="600" rx="64"
+        fill="url(#caseM)" stroke="#7C0808" stroke-width="10"/>
+  <!-- Lid seam -->
+  <line x1="200" y1="376" x2="824" y2="376"
+        stroke="black" stroke-opacity="0.22" stroke-width="6"/>
+  <!-- Latch -->
+  <rect x="476" y="358" width="72" height="42" rx="6"
+        fill="white" stroke="#7C0808" stroke-width="4"/>
+
+  <!-- Big white "H" on the front -->
+  <g fill="white">
+    <rect x="284" y="440" width="116" height="380" rx="28"/>
+    <rect x="624" y="440" width="116" height="380" rx="28"/>
+    <rect x="284" y="588" width="456" height="92" rx="20"/>
+  </g>
+
+  <!-- Tiny red "+" inside the H crossbar -->
+  <g fill="#B71C1C">
+    <rect x="498" y="606" width="28" height="56" rx="5"/>
+    <rect x="484" y="620" width="56" height="28" rx="5"/>
+  </g>
+</svg>

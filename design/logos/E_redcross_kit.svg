@@ -1,0 +1,29 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgE" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EF3C3C"/>
+      <stop offset="1" stop-color="#B71C1C"/>
+    </linearGradient>
+    <linearGradient id="crossE" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F2F2F2"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bgE)"/>
+
+  <!-- Subtle top highlight, for a dimensional kit-lid feel -->
+  <rect width="1024" height="1024" fill="white" opacity="0.04"/>
+  <rect width="1024" height="220" fill="white" opacity="0.06"/>
+
+  <!-- Bold white medical cross with rounded ends -->
+  <g fill="url(#crossE)">
+    <rect x="424" y="248" width="176" height="528" rx="48"/>
+    <rect x="248" y="424" width="528" height="176" rx="48"/>
+  </g>
+
+  <!-- Soft inner shadow to give the cross dimension -->
+  <g fill="none" stroke="black" stroke-opacity="0.06" stroke-width="6">
+    <rect x="430" y="254" width="164" height="516" rx="42"/>
+    <rect x="254" y="430" width="516" height="164" rx="42"/>
+  </g>
+</svg>

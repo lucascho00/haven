@@ -1,0 +1,45 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgF" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F5F1EA"/>
+      <stop offset="1" stop-color="#D6CFC3"/>
+    </linearGradient>
+    <linearGradient id="caseF" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EF3C3C"/>
+      <stop offset="1" stop-color="#B71C1C"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bgF)"/>
+
+  <!-- Carry handle (rounded rectangle with a slot through it) -->
+  <g>
+    <rect x="380" y="180" width="264" height="80" rx="38"
+          fill="#374151" stroke="#1F2937" stroke-width="6"/>
+    <!-- handle slot -->
+    <rect x="430" y="208" width="164" height="24" rx="10" fill="#1F2937"/>
+  </g>
+
+  <!-- Kit body (rounded square — the case itself) -->
+  <rect x="180" y="260" width="664" height="600" rx="64"
+        fill="url(#caseF)" stroke="#7C0808" stroke-width="10"/>
+
+  <!-- Lid seam — horizontal line near the top to suggest a hinged lid -->
+  <line x1="200" y1="376" x2="824" y2="376"
+        stroke="black" stroke-opacity="0.18" stroke-width="6"/>
+
+  <!-- Latch in the middle of the seam -->
+  <rect x="476" y="358" width="72" height="42" rx="6"
+        fill="#FFFFFF" stroke="#7C0808" stroke-width="4"/>
+
+  <!-- Big white medical cross on the front of the case -->
+  <g fill="white">
+    <rect x="446" y="448" width="132" height="384" rx="28"/>
+    <rect x="320" y="556" width="384" height="132" rx="28"/>
+  </g>
+
+  <!-- Subtle inner-glow on the cross -->
+  <g fill="none" stroke="#7C0808" stroke-opacity="0.10" stroke-width="4">
+    <rect x="450" y="452" width="124" height="376" rx="24"/>
+    <rect x="324" y="560" width="376" height="124" rx="24"/>
+  </g>
+</svg>

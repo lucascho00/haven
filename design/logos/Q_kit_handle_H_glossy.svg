@@ -1,0 +1,59 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgQ" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F8F4ED"/>
+      <stop offset="1" stop-color="#CDC4B4"/>
+    </linearGradient>
+    <linearGradient id="caseQ" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FF5252"/>
+      <stop offset="0.55" stop-color="#D32F2F"/>
+      <stop offset="1" stop-color="#7C0808"/>
+    </linearGradient>
+    <linearGradient id="shineQ" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="white" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="white" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bgQ)"/>
+
+  <!-- Soft shadow under the kit for dimension -->
+  <ellipse cx="512" cy="892" rx="320" ry="22"
+           fill="black" opacity="0.18"/>
+
+  <!-- Handle -->
+  <rect x="380" y="180" width="264" height="80" rx="38"
+        fill="#374151" stroke="#1F2937" stroke-width="6"/>
+  <rect x="430" y="208" width="164" height="24" rx="10" fill="#1F2937"/>
+  <!-- Tiny chrome highlight on the handle -->
+  <rect x="394" y="190" width="236" height="8" rx="4"
+        fill="white" opacity="0.35"/>
+
+  <!-- Kit case -->
+  <rect x="180" y="260" width="664" height="600" rx="64"
+        fill="url(#caseQ)" stroke="#7C0808" stroke-width="10"/>
+
+  <!-- Glossy specular highlight across the top half of the lid -->
+  <path d="M 200 280 Q 200 264 220 264 L 808 264 Q 824 264 824 280 L 824 460
+           Q 700 480 512 480 Q 324 480 200 460 Z"
+        fill="url(#shineQ)"/>
+
+  <!-- Lid seam -->
+  <line x1="200" y1="376" x2="824" y2="376"
+        stroke="black" stroke-opacity="0.22" stroke-width="6"/>
+  <!-- Latch -->
+  <rect x="476" y="358" width="72" height="42" rx="6"
+        fill="white" stroke="#7C0808" stroke-width="4"/>
+
+  <!-- Big white "H" -->
+  <g fill="white">
+    <rect x="284" y="440" width="116" height="380" rx="28"/>
+    <rect x="624" y="440" width="116" height="380" rx="28"/>
+    <rect x="284" y="588" width="456" height="92" rx="20"/>
+  </g>
+
+  <!-- Red "+" inside the H crossbar -->
+  <g fill="#B71C1C">
+    <rect x="498" y="606" width="28" height="56" rx="5"/>
+    <rect x="484" y="620" width="56" height="28" rx="5"/>
+  </g>
+</svg>

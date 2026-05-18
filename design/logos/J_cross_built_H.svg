@@ -1,0 +1,23 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgJ" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EF3C3C"/>
+      <stop offset="1" stop-color="#7C0808"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bgJ)"/>
+
+  <!-- Two white medical crosses (left + right) form the verticals of an H -->
+  <g fill="white">
+    <!-- Left cross -->
+    <rect x="240" y="240" width="120" height="544" rx="32"/>
+    <rect x="180" y="482" width="240" height="120" rx="32"/>
+    <!-- Right cross -->
+    <rect x="664" y="240" width="120" height="544" rx="32"/>
+    <rect x="604" y="482" width="240" height="120" rx="32"/>
+  </g>
+
+  <!-- The H crossbar — bridges the two crosses through their middles,
+       making the "H" letterform jump out at the same time -->
+  <rect x="360" y="498" width="304" height="88" rx="22" fill="white"/>
+</svg>

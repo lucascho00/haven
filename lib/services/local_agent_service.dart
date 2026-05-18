@@ -7,8 +7,6 @@ import 'package:flutter_gemma/core/model.dart';
 import 'package:flutter_gemma/pigeon.g.dart' show PreferredBackend;
 import 'package:path_provider/path_provider.dart';
 
-import '../storage/haven_cache.dart';
-
 /// Stages the Gemma 4 weights move through from app launch to ready.
 enum AgentInstallStage {
   idle,
@@ -62,9 +60,6 @@ class LocalAgentService extends ChangeNotifier {
   int _progress = 0;
   String? _error;
   Future<void>? _activeInstall;
-  BackendChoice _backendChoice = BackendChoice.fromName(
-    HavenCache.getAgentBackend(),
-  );
 
   AgentInstallStage get stage => _stage;
   int get progress => _progress;
@@ -74,14 +69,9 @@ class LocalAgentService extends ChangeNotifier {
       _stage == AgentInstallStage.checking ||
       _stage == AgentInstallStage.downloading;
 
-  BackendChoice get backendChoice => _backendChoice;
-
-  Future<void> setBackendChoice(BackendChoice choice) async {
-    if (_backendChoice == choice) return;
-    _backendChoice = choice;
-    await HavenCache.saveAgentBackend(choice.name);
-    notifyListeners();
-  }
+  /// Backend selection is now always Auto (GPU first, CPU fallback).
+  /// Kept as a getter so call-sites in chat_screen don't need rewriting.
+  BackendChoice get backendChoice => BackendChoice.auto;
 
   /// Idempotent. Concurrent callers reuse the in-flight install future.
   Future<void> ensureInstalled() {

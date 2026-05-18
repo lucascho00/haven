@@ -1,0 +1,48 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgS" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F5F1EA"/>
+      <stop offset="1" stop-color="#D6CFC3"/>
+    </linearGradient>
+    <linearGradient id="caseS" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EF3C3C"/>
+      <stop offset="1" stop-color="#B71C1C"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bgS)"/>
+
+  <!-- Handle -->
+  <rect x="380" y="180" width="264" height="80" rx="38"
+        fill="#374151" stroke="#1F2937" stroke-width="6"/>
+  <rect x="430" y="208" width="164" height="24" rx="10" fill="#1F2937"/>
+
+  <!-- Kit case -->
+  <rect x="180" y="260" width="664" height="600" rx="64"
+        fill="url(#caseS)" stroke="#7C0808" stroke-width="10"/>
+
+  <!-- Lid seam + latch -->
+  <line x1="200" y1="376" x2="824" y2="376"
+        stroke="black" stroke-opacity="0.18" stroke-width="6"/>
+  <rect x="476" y="358" width="72" height="42" rx="6"
+        fill="white" stroke="#7C0808" stroke-width="4"/>
+
+  <!-- White "label" panel on the front (like a stitched-on tag) -->
+  <rect x="240" y="420" width="544" height="404" rx="28" fill="white"/>
+  <!-- Stitch-style dashed inner border -->
+  <rect x="260" y="440" width="504" height="364" rx="20"
+        fill="none" stroke="#B71C1C" stroke-width="3"
+        stroke-dasharray="10 8" opacity="0.55"/>
+
+  <!-- Red "H" sitting on the label -->
+  <g fill="#B71C1C">
+    <rect x="312" y="478" width="100" height="288" rx="22"/>
+    <rect x="612" y="478" width="100" height="288" rx="22"/>
+    <rect x="312" y="592" width="400" height="80" rx="18"/>
+  </g>
+
+  <!-- Compact medical "+" tucked at the right edge of the crossbar -->
+  <g fill="#B71C1C">
+    <rect x="744" y="612" width="22" height="42" rx="4"/>
+    <rect x="734" y="622" width="42" height="22" rx="4"/>
+  </g>
+</svg>

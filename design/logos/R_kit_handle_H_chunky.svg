@@ -1,0 +1,42 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgR" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F5F1EA"/>
+      <stop offset="1" stop-color="#D6CFC3"/>
+    </linearGradient>
+    <linearGradient id="caseR" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EF3C3C"/>
+      <stop offset="1" stop-color="#B71C1C"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bgR)"/>
+
+  <!-- Chunkier rounded handle -->
+  <rect x="364" y="170" width="296" height="92" rx="46"
+        fill="#374151" stroke="#1F2937" stroke-width="6"/>
+  <rect x="420" y="202" width="184" height="28" rx="14" fill="#1F2937"/>
+
+  <!-- Kit case — heavier corner radius for a softer / friendly silhouette -->
+  <rect x="160" y="260" width="704" height="610" rx="120"
+        fill="url(#caseR)" stroke="#7C0808" stroke-width="10"/>
+
+  <!-- Lid seam -->
+  <line x1="184" y1="386" x2="840" y2="386"
+        stroke="black" stroke-opacity="0.18" stroke-width="6"/>
+  <!-- Latch -->
+  <rect x="470" y="364" width="84" height="50" rx="10"
+        fill="white" stroke="#7C0808" stroke-width="4"/>
+
+  <!-- Chunkier H — thicker strokes, more rounded ends -->
+  <g fill="white">
+    <rect x="276" y="450" width="140" height="380" rx="56"/>
+    <rect x="608" y="450" width="140" height="380" rx="56"/>
+    <rect x="276" y="588" width="472" height="108" rx="36"/>
+  </g>
+
+  <!-- Red "+" inside the H crossbar -->
+  <g fill="#B71C1C">
+    <rect x="494" y="608" width="36" height="68" rx="6"/>
+    <rect x="478" y="624" width="68" height="36" rx="6"/>
+  </g>
+</svg>

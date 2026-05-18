@@ -1,0 +1,26 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgI" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EF3C3C"/>
+      <stop offset="1" stop-color="#B71C1C"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bgI)"/>
+
+  <!-- Subtle top highlight for kit-lid dimensional feel -->
+  <rect width="1024" height="240" fill="white" opacity="0.06"/>
+
+  <!-- Bold white "H" — left vertical, right vertical, crossbar -->
+  <g fill="white">
+    <rect x="280" y="240" width="140" height="544" rx="38"/>
+    <rect x="604" y="240" width="140" height="544" rx="38"/>
+    <rect x="280" y="466" width="464" height="92" rx="20"/>
+  </g>
+
+  <!-- Tiny medical "+" tucked inside the H crossbar so the icon still
+       reads as first-aid at a glance -->
+  <g fill="#EF3C3C">
+    <rect x="494" y="478" width="36" height="68" rx="6"/>
+    <rect x="478" y="494" width="68" height="36" rx="6"/>
+  </g>
+</svg>

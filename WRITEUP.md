@@ -19,7 +19,7 @@ A Flutter iPhone/Android app with four tabs:
 - **Map** — offline OSM tiles, 100 hand-curated Tehran POIs (hospitals, embassies, shelters, schools, fuel, transit) layered with whatever Overpass returns at refresh time, magnetometer-driven compass.
 - **Newspaper** — cached local reports from Google News RSS, GDELT, and GDACS with extracted article bodies; tap any source URL to open in the system browser.
 - **Agent** — on-device Gemma 4 E2B chat with voice in/out, six native-function-calling tools, and tool→UI navigation cards.
-- **Settings** — survival manuals, news-source toggles, a Gemma backend selector (Auto / GPU / CPU), and a **Location preset chooser** (Tehran / Kyiv / Gaza / *Use my real GPS*).
+- **Settings** — survival manuals, news-source toggles, and a **Location preset chooser** (Tehran / Kyiv / Gaza / *Use my real GPS*).
 
 Everything in the Agent tab — prompts, responses, cached context, function calls, voice — happens locally on the phone. No prompt, no response, no cached headline, and no user query ever leaves the device.
 
@@ -94,7 +94,7 @@ The first thing the user sees in the Agent tab is a synthetic first turn the app
 
 ## LiteRT-LM integration
 
-HAVEN is built on **Google AI Edge's LiteRT-LM SDK** end-to-end. We use the `.litertlm` weights published by `litert-community/gemma-4-E2B-it-litert-lm`, loaded through `flutter_gemma 0.15`'s LiteRT-LM FFI client (`LiteRtLmFfiClient.initialize`). The accelerator selection — Metal on iOS, OpenCL on Android, with automatic CPU fallback — comes directly from LiteRT's registry. Settings exposes the choice to the user (Auto / GPU only / CPU only) backed by the LiteRT `PreferredBackend` enum.
+HAVEN is built on **Google AI Edge's LiteRT-LM SDK** end-to-end. We use the `.litertlm` weights published by `litert-community/gemma-4-E2B-it-litert-lm`, loaded through `flutter_gemma 0.15`'s LiteRT-LM FFI client (`LiteRtLmFfiClient.initialize`). Accelerator selection comes directly from LiteRT's registry: Metal on iOS, OpenCL on Android, with automatic CPU fallback if the GPU path errors at init — so a Metal driver quirk on one device class doesn't take the agent offline.
 
 Native function calling routes through LiteRT-LM's `tools_json` mechanism rather than regex-parsing the model output; the SDK separates `<|tool_call>…<tool_call|>` blocks from natural-language tokens, which we surface as `FunctionCallResponse` events in the chat stream.
 
@@ -110,7 +110,7 @@ Every completed reply shows an inference perf chip: *"12.4 tok/s · GPU(Metal) v
 
 ## What's next
 
-A custom Unsloth fine-tune on FEMA / WHO / ICRC corpora targeted at the **Unsloth Special Tech** track, and an E4B vision upgrade so users can photograph an injury and get an assessment. The architecture is already wired for both — `LocalAgentService` abstracts the model identity, and the function-calling layer would simply gain new vision-aware tools. Future location presets are also one enum value away: the `LocationPreset` enum is open-set, so dropping in *Khartoum, Sudan* or *Beirut, Lebanon* is a coordinate pair and a Settings entry.
+An Unsloth fine-tune on FEMA / WHO / ICRC corpora (targeting the **Unsloth Special Tech** track) and an E4B vision upgrade so users can photograph an injury and get an assessment. The architecture is wired for both — `LocalAgentService` abstracts the model identity; function calling just gains new vision-aware tools. New `LocationPreset` cities are one enum value away.
 
 ---
 

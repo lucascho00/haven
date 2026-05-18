@@ -1,0 +1,43 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgB" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0A1228"/>
+      <stop offset="0.6" stop-color="#1B2C4F"/>
+      <stop offset="1" stop-color="#2A3F70"/>
+    </linearGradient>
+    <radialGradient id="beam" cx="0.5" cy="0.1" r="0.9">
+      <stop offset="0" stop-color="#FFEB3B" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#FFEB3B" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bgB)"/>
+
+  <!-- Light beams (two cones radiating out from the lamp) -->
+  <polygon points="512,310 140,160 140,460" fill="url(#beam)"/>
+  <polygon points="512,310 884,160 884,460" fill="url(#beam)"/>
+
+  <!-- Lighthouse tower (trapezoid, tapered upward) -->
+  <polygon points="426,820 598,820 568,420 456,420"
+           fill="white"
+           stroke="#80DEEA"
+           stroke-width="8"/>
+
+  <!-- Tower stripes -->
+  <rect x="456" y="500" width="112" height="40" fill="#E53935"/>
+  <rect x="456" y="640" width="112" height="40" fill="#E53935"/>
+
+  <!-- Lamp housing -->
+  <rect x="448" y="340" width="128" height="84"
+        fill="#0A1228" stroke="white" stroke-width="6"/>
+
+  <!-- Glowing lamp -->
+  <circle cx="512" cy="382" r="34" fill="#FFEB3B"/>
+  <circle cx="512" cy="382" r="34" fill="none" stroke="white" stroke-width="3"/>
+
+  <!-- Roof / cap -->
+  <polygon points="436,340 512,272 588,340"
+           fill="#E53935" stroke="white" stroke-width="6" stroke-linejoin="round"/>
+
+  <!-- Tiny finial -->
+  <circle cx="512" cy="262" r="10" fill="white"/>
+</svg>

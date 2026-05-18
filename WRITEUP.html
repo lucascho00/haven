@@ -112,9 +112,9 @@ to open in the system browser.</li>
 <li><strong>Agent</strong> — on-device Gemma 4 E2B chat with voice
 in/out, six native-function-calling tools, and tool→UI navigation
 cards.</li>
-<li><strong>Settings</strong> — survival manuals, news-source toggles, a
-Gemma backend selector (Auto / GPU / CPU), and a <strong>Location preset
-chooser</strong> (Tehran / Kyiv / Gaza / <em>Use my real GPS</em>).</li>
+<li><strong>Settings</strong> — survival manuals, news-source toggles,
+and a <strong>Location preset chooser</strong> (Tehran / Kyiv / Gaza /
+<em>Use my real GPS</em>).</li>
 </ul>
 <p>Everything in the Agent tab — prompts, responses, cached context,
 function calls, voice — happens locally on the phone. No prompt, no
@@ -247,11 +247,10 @@ is the “agentic retrieval” the hackathon brief names.</p>
 end-to-end. We use the <code>.litertlm</code> weights published by
 <code>litert-community/gemma-4-E2B-it-litert-lm</code>, loaded through
 <code>flutter_gemma 0.15</code>’s LiteRT-LM FFI client
-(<code>LiteRtLmFfiClient.initialize</code>). The accelerator selection —
-Metal on iOS, OpenCL on Android, with automatic CPU fallback — comes
-directly from LiteRT’s registry. Settings exposes the choice to the user
-(Auto / GPU only / CPU only) backed by the LiteRT
-<code>PreferredBackend</code> enum.</p>
+(<code>LiteRtLmFfiClient.initialize</code>). Accelerator selection comes
+directly from LiteRT’s registry: Metal on iOS, OpenCL on Android, with
+automatic CPU fallback if the GPU path errors at init — so a Metal
+driver quirk on one device class doesn’t take the agent offline.</p>
 <p>Native function calling routes through LiteRT-LM’s
 <code>tools_json</code> mechanism rather than regex-parsing the model
 output; the SDK separates
@@ -296,15 +295,13 @@ detects the start of a tool-call JSON blob and drops every subsequent
 token for the rest of that turn.</li>
 </ul>
 <h2 id="whats-next">What’s next</h2>
-<p>A custom Unsloth fine-tune on FEMA / WHO / ICRC corpora targeted at
-the <strong>Unsloth Special Tech</strong> track, and an E4B vision
-upgrade so users can photograph an injury and get an assessment. The
-architecture is already wired for both — <code>LocalAgentService</code>
-abstracts the model identity, and the function-calling layer would
-simply gain new vision-aware tools. Future location presets are also one
-enum value away: the <code>LocationPreset</code> enum is open-set, so
-dropping in <em>Khartoum, Sudan</em> or <em>Beirut, Lebanon</em> is a
-coordinate pair and a Settings entry.</p>
+<p>An Unsloth fine-tune on FEMA / WHO / ICRC corpora (targeting the
+<strong>Unsloth Special Tech</strong> track) and an E4B vision upgrade
+so users can photograph an injury and get an assessment. The
+architecture is wired for both — <code>LocalAgentService</code>
+abstracts the model identity; function calling just gains new
+vision-aware tools. New <code>LocationPreset</code> cities are one enum
+value away.</p>
 <hr />
 <p><strong>Repo:</strong> https://github.com/lucascho00/haven
 <strong>Video:</strong> <em>(YouTube link)</em> <strong>Live

@@ -1,0 +1,31 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgL" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F2EDE6"/>
+    </linearGradient>
+    <linearGradient id="hL" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EF3C3C"/>
+      <stop offset="1" stop-color="#B71C1C"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bgL)"/>
+
+  <!-- Faint red frame around the icon for kit-card identity -->
+  <rect x="64" y="64" width="896" height="896" rx="180"
+        fill="none" stroke="#B71C1C" stroke-opacity="0.18" stroke-width="8"/>
+
+  <!-- The H, in red -->
+  <g fill="url(#hL)">
+    <rect x="240" y="210" width="144" height="604" rx="38"/>
+    <rect x="640" y="210" width="144" height="604" rx="38"/>
+    <rect x="240" y="468" width="544" height="88" rx="20"/>
+  </g>
+
+  <!-- A precise white medical cross dropped over the H crossbar, so the
+       icon equally reads "first aid" and "H" -->
+  <g fill="white">
+    <rect x="476" y="438" width="72" height="148" rx="14"/>
+    <rect x="438" y="476" width="148" height="72" rx="14"/>
+  </g>
+</svg>

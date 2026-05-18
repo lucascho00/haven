@@ -1,0 +1,34 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0F1B3A"/>
+      <stop offset="1" stop-color="#070D22"/>
+    </linearGradient>
+    <linearGradient id="crossG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E8EEF7"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bgG)"/>
+
+  <!-- Soft radial glow behind the cross -->
+  <circle cx="512" cy="512" r="380" fill="#E53935" opacity="0.10"/>
+
+  <!-- White medical cross -->
+  <g fill="url(#crossG)">
+    <rect x="430" y="228" width="164" height="568" rx="36"/>
+    <rect x="228" y="430" width="568" height="164" rx="36"/>
+  </g>
+
+  <!-- Red heartbeat / ECG line crossing horizontally through the centre -->
+  <polyline
+        points="120,512 320,512 360,512 392,420 432,612 472,360 512,664 552,360 592,612 632,420 664,512 904,512"
+        fill="none"
+        stroke="#E53935"
+        stroke-width="22"
+        stroke-linejoin="round"
+        stroke-linecap="round"/>
+
+  <!-- Small center "pivot" so the pulse line clearly crosses the centre -->
+  <circle cx="512" cy="512" r="14" fill="#E53935"/>
+</svg>

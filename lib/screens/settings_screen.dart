@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/manual_item.dart';
-import '../services/local_agent_service.dart';
 import '../services/location_service.dart';
 import '../services/navigation_service.dart';
 import '../services/news_service.dart';
@@ -20,26 +19,9 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   @override
-  void initState() {
-    super.initState();
-    LocalAgentService.instance.addListener(_onAgentChange);
-  }
-
-  @override
-  void dispose() {
-    LocalAgentService.instance.removeListener(_onAgentChange);
-    super.dispose();
-  }
-
-  void _onAgentChange() {
-    if (mounted) setState(() {});
-  }
-
-  @override
   Widget build(BuildContext context) {
     final manuals = HavenCache.getManuals();
     final lastRefresh = HavenCache.getLastRefresh();
-    final agent = LocalAgentService.instance;
 
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
@@ -90,26 +72,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 content: Text(
                   'Switched to ${preset.displayName}. '
                   'Map and Newspaper are refreshing for the new area.',
-                ),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          },
-        ),
-        const GlassSectionHeader(
-          title: 'Local Agent Backend',
-          subtitle:
-              'LiteRT-LM accelerator. GPU is fastest on real iPhones; CPU is the only option on the iOS Simulator.',
-        ),
-        _BackendChoiceCard(
-          current: agent.backendChoice,
-          onChanged: (choice) async {
-            await agent.setBackendChoice(choice);
-            if (!context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Backend set to ${choice.displayName}. Open the Agent tab and tap reset for the change to take effect.',
                 ),
                 behavior: SnackBarBehavior.floating,
               ),
@@ -298,88 +260,6 @@ class _LocationOption extends StatelessWidget {
                     ),
                   ),
                 ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _BackendChoiceCard extends StatelessWidget {
-  const _BackendChoiceCard({required this.current, required this.onChanged});
-
-  final BackendChoice current;
-  final ValueChanged<BackendChoice> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassPanel(
-      borderRadius: 22,
-      opacity: 0.16,
-      padding: const EdgeInsets.all(10),
-      child: Column(
-        children: [
-          for (final choice in BackendChoice.values)
-            _BackendOption(
-              choice: choice,
-              selected: choice == current,
-              onTap: () => onChanged(choice),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BackendOption extends StatelessWidget {
-  const _BackendOption({
-    required this.choice,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final BackendChoice choice;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          color: selected
-              ? GlassColors.emergency.withValues(alpha: 0.22)
-              : Colors.white.withValues(alpha: 0.05),
-          border: Border.all(
-            color: selected
-                ? GlassColors.emergency.withValues(alpha: 0.6)
-                : Colors.white.withValues(alpha: 0.12),
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-              color: selected ? GlassColors.emergency : GlassColors.textTertiary,
-              size: 20,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                choice.displayName,
-                style: TextStyle(
-                  color: selected ? GlassColors.textPrimary : GlassColors.textSecondary,
-                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                  fontSize: 14,
-                ),
               ),
             ),
           ],
