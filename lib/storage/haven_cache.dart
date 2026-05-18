@@ -75,23 +75,27 @@ class HavenCache {
   }
 
   static Future<void> saveNews(List<NewsArticle> articles) async {
-    final current = {for (final article in getNews()) article.id: article};
-    final mergedArticles = articles.map((article) {
-      final existing = current[article.id];
-      if (existing == null || article.content != null) return article;
+    // Replace, do not merge. Preserve full-text bodies for any URLs that
+    // happen to appear in BOTH the previous cache and the new fetch (this
+    // keeps lazy-extracted content from disappearing on refresh) — but
+    // do not keep articles that aren't in the new fetch, otherwise stale
+    // Tehran headlines linger forever after the user switches Demo
+    // Location to Kyiv / Gaza / their real GPS.
+    final previousById = {for (final a in getNews()) a.id: a};
+    final merged = articles.map((article) {
+      if (article.content != null && article.content!.isNotEmpty) {
+        return article; // new fetch already has body — use it
+      }
+      final prior = previousById[article.id];
+      if (prior == null) return article;
       return article.copyWith(
-        content: existing.content,
-        contentFetchedAt: existing.contentFetchedAt,
-        contentStatus: existing.contentStatus,
+        content: prior.content,
+        contentFetchedAt: prior.contentFetchedAt,
+        contentStatus: prior.contentStatus,
       );
-    });
-    final existing = {
-      for (final article in current.values) article.id: article,
-      for (final article in mergedArticles) article.id: article,
-    };
-    final sorted = existing.values.toList()
+    }).toList()
       ..sort((a, b) => b.publishedAt.compareTo(a.publishedAt));
-    final trimmed = sorted.take(80).toList();
+    final trimmed = merged.take(80).toList();
     await _news.clear();
     await _news.putAll({
       for (final article in trimmed) article.id: article.toJson(),
