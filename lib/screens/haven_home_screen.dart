@@ -29,6 +29,15 @@ class _HavenHomeScreenState extends State<HavenHomeScreen> {
 
   static const _titles = ['Map', 'Newspaper', 'Agent', 'Settings'];
 
+  // Lazy-mount strategy: tabs the user hasn't opened yet stay as a SizedBox
+  // placeholder, so heavyweight initialisation (especially ChatScreen, which
+  // forces the 1.5 GB Gemma 4 weights into memory on session prep) doesn't
+  // happen in the background while the user is on the Map tab. Without this
+  // the device was OOM-killing the app the moment the user tapped a non-Map
+  // tab for the first time. Once a tab is visited it stays mounted so its
+  // state (chat history, map controller, etc.) survives further tab switches.
+  final Set<int> _mountedTabs = {HavenTabs.map};
+
   @override
   void initState() {
     super.initState();
@@ -50,6 +59,16 @@ class _HavenHomeScreenState extends State<HavenHomeScreen> {
     return ValueListenableBuilder<int>(
       valueListenable: NavigationService.instance.tabIndex,
       builder: (context, index, _) {
+        // Lock in this tab for future builds: once mounted, the screen's
+        // state survives subsequent tab switches just like a normal
+        // IndexedStack.
+        _mountedTabs.add(index);
+        final lazyScreens = [
+          for (var i = 0; i < _screens.length; i++)
+            _mountedTabs.contains(i)
+                ? _screens[i]
+                : const SizedBox.shrink(),
+        ];
         return Scaffold(
           backgroundColor: Colors.transparent,
           // Don't shrink the body when the soft keyboard opens — that's what
@@ -67,12 +86,12 @@ class _HavenHomeScreenState extends State<HavenHomeScreen> {
                     // Map tab renders edge-to-edge under the floating header
                     // and tab bar; other tabs keep the boxed padding.
                     child: index == HavenTabs.map
-                        ? IndexedStack(index: index, children: _screens)
+                        ? IndexedStack(index: index, children: lazyScreens)
                         : Padding(
                             padding:
                                 const EdgeInsets.fromLTRB(18, 84, 18, 104),
                             child:
-                                IndexedStack(index: index, children: _screens),
+                                IndexedStack(index: index, children: lazyScreens),
                           ),
                   ),
                   Positioned(

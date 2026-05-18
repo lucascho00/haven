@@ -232,7 +232,11 @@ CRITICAL RULES:
 
   Future<void> _initWithBackend(PreferredBackend backend) async {
     final model = await FlutterGemma.getActiveModel(
-      maxTokens: 4096,
+      // 2048 KV-cache tokens is plenty for the compact system context
+      // (~700 tokens) + a multi-turn conversation, and halving from 4096
+      // gives back ~300-500 MB on iPhone — the difference between OOM
+      // and a stable Agent tab on an iPhone 16e.
+      maxTokens: 2048,
       preferredBackend: backend,
     );
     // Static local context lives in the system instruction — sent once, kept
