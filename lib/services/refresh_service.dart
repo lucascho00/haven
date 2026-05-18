@@ -119,8 +119,13 @@ class RefreshService {
     }
 
     // Step 5: safe-place fetch. Isolated for the same reason — Overpass /
-    // OSRM hiccups must not silently strand the map.
-    var safePlaceCount = 0;
+    // OSRM hiccups must not silently strand the map. Crucially, we only
+    // persist a NON-EMPTY result: an empty list is almost always "network
+    // failed" or "every Overpass mirror timed out" (the SDK doesn't throw
+    // in that path, it just returns []). Saving [] would wipe whatever
+    // was cached from the last successful fetch and the user would see
+    // an empty map after every tab switch.
+    var safePlaceCount = HavenCache.getSafePlaces().length;
     try {
       debugPrint(
         'RefreshService: fetching safe places around ${location.label}...',
@@ -129,12 +134,19 @@ class RefreshService {
       debugPrint(
         'RefreshService: fetchNearby returned ${safePlaces.length} places',
       );
-      await HavenCache.saveSafePlaces(safePlaces);
-      safePlaceCount = safePlaces.length;
-      debugPrint(
-        'RefreshService: cache now holds '
-        '${HavenCache.getSafePlaces().length} safe places',
-      );
+      if (safePlaces.isEmpty) {
+        debugPrint(
+          'RefreshService: empty result — keeping existing safe-place '
+          'cache ($safePlaceCount) instead of wiping',
+        );
+      } else {
+        await HavenCache.saveSafePlaces(safePlaces);
+        safePlaceCount = safePlaces.length;
+        debugPrint(
+          'RefreshService: cache now holds '
+          '${HavenCache.getSafePlaces().length} safe places',
+        );
+      }
     } catch (e, st) {
       debugPrint('RefreshService: safe-place pipeline failed — $e\n$st');
     }

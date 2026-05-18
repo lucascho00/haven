@@ -17,6 +17,7 @@ import '../services/ai_tools_service.dart';
 import '../services/local_agent_service.dart';
 import '../services/navigation_service.dart';
 import '../services/voice_service.dart';
+import '../storage/haven_cache.dart';
 import '../ui/glass_theme.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -63,6 +64,13 @@ CRITICAL RULES:
   bool _cpuFallbackAttempted = false;
   String? _gpuErrorMessage;
 
+  // What the current chat session was grounded in (location label, place
+  // count, news count). Shown in the status banner so the user can verify
+  // the agent actually picked up their location-preset switch.
+  String? _groundedLabel;
+  int _groundedPlaceCount = 0;
+  int _groundedNewsCount = 0;
+
   // Voice (push-to-talk; TTS readback always on — users mute via volume).
   bool _listening = false;
 
@@ -100,10 +108,23 @@ CRITICAL RULES:
     super.dispose();
   }
 
+  // Set when a location-preset change arrives while we're still preparing
+  // the very first session. _runSessionStart consumes it after the session
+  // is ready so the agent ends up grounded in the newest cache instead of
+  // the stale one that was current when prep began.
+  bool _pendingLocationReset = false;
+
   void _onLocationChanged() {
     if (!mounted) return;
-    if (_chat == null) return; // no live session to reset
-    debugPrint('Chat: location preset changed — resetting session');
+    if (_chat == null) {
+      debugPrint(
+        'Chat: location preset changed mid-prep, queued reset for when '
+        'the session is ready',
+      );
+      _pendingLocationReset = true;
+      return;
+    }
+    debugPrint('Chat: location preset changed — resetting session now');
     unawaited(_resetChat());
   }
 
@@ -142,6 +163,14 @@ CRITICAL RULES:
       await _handleSessionFailure(e);
     } finally {
       _sessionStartScheduled = false;
+    }
+    // If a location preset change arrived while we were preparing this
+    // session, the chat was built with stale context. Rebuild now so the
+    // agent ends up grounded in the latest cache.
+    if (_pendingLocationReset && mounted && _chat != null) {
+      _pendingLocationReset = false;
+      debugPrint('Chat: consuming queued location reset post-prep');
+      unawaited(_resetChat());
     }
   }
 
@@ -257,8 +286,20 @@ CRITICAL RULES:
       preferredBackend: backend,
     );
     // Static local context lives in the system instruction — sent once, kept
-    // in the KV cache, never re-transmitted per turn.
+    // in the KV cache, never re-transmitted per turn. Re-read the cache
+    // RIGHT BEFORE createChat so a refresh that landed during model init
+    // still makes it into the system prompt.
     final systemContext = _contextService.buildSystemContext();
+    final groundLocation = HavenCache.getLastLocation();
+    final groundedPlaces = HavenCache.getSafePlaces().length;
+    final groundedNews = HavenCache.getNews().length;
+    final groundedLabel = groundLocation?.label ?? 'unknown';
+    debugPrint(
+      'Chat: building system context for $groundedLabel '
+      '($groundedPlaces places, $groundedNews news) — '
+      '${systemContext.length} chars',
+    );
+    debugPrint('=== systemContext START ===\n$systemContext\n=== systemContext END ===');
     final chat = await model.createChat(
       systemInstruction: '$_systemPrompt\n\n$systemContext',
       modelType: ModelType.gemma4,
@@ -287,6 +328,9 @@ CRITICAL RULES:
       _model = model;
       _chat = chat;
       _stage = _ModelStage.ready;
+      _groundedLabel = groundedLabel;
+      _groundedPlaceCount = groundedPlaces;
+      _groundedNewsCount = groundedNews;
       _messages
         ..clear()
         ..add(
@@ -323,6 +367,7 @@ CRITICAL RULES:
     final stopwatch = Stopwatch();
     _suppressingToolCallEcho = false;
     try {
+      _ttsResetStream();
       await chat.addQueryChunk(
         Message.text(text: situationPrompt, isUser: true),
       );
@@ -335,6 +380,7 @@ CRITICAL RULES:
           if (safe.isEmpty) continue;
           setState(() => placeholder.content += safe);
           _scrollToBottomSoon();
+          _ttsConsumeToken(safe);
         }
       }
     } catch (e) {
@@ -354,7 +400,7 @@ CRITICAL RULES:
                 '${(tokenCount / elapsed).toStringAsFixed(1)} tok/s · ${_backendLabel()}';
           }
         });
-        _maybeSpeakReply(placeholder);
+        _ttsFlush();
       }
     }
   }
@@ -403,6 +449,7 @@ CRITICAL RULES:
     final stopwatch = Stopwatch();
 
     _suppressingToolCallEcho = false;
+    _ttsResetStream();
     try {
       await chat.addQueryChunk(Message.text(text: text, isUser: true));
 
@@ -427,6 +474,7 @@ CRITICAL RULES:
             if (safe.isEmpty) continue;
             setState(() => aiMessage.content += safe);
             _scrollToBottomSoon();
+            _ttsConsumeToken(safe);
           } else if (response is FunctionCallResponse) {
             pendingCalls.add(response);
           } else if (response is ParallelFunctionCallResponse) {
@@ -478,7 +526,7 @@ CRITICAL RULES:
           aiMessage.metric = metric;
           _generating = false;
         });
-        _maybeSpeakReply(aiMessage);
+        _ttsFlush();
       }
     }
   }
@@ -605,10 +653,37 @@ CRITICAL RULES:
     if (mounted) setState(() => _listening = false);
   }
 
-  void _maybeSpeakReply(_ChatMessage message) {
-    final text = message.content.trim();
-    if (text.isEmpty) return;
-    unawaited(VoiceService.instance.speak(text));
+  // Streaming TTS buffer + helpers. Instead of waiting for the full reply,
+  // we accumulate tokens and speak whenever we cross a sentence boundary,
+  // so the agent starts talking while the rest of the answer is still
+  // being generated. Relies on flutter_tts setQueueMode(1) so back-to-back
+  // speak() calls enqueue rather than interrupt.
+  String _ttsStreamBuffer = '';
+  // Matches the end of a sentence — terminator followed by whitespace or
+  // end-of-string. Covers English (.!?…), CJK (。?), and Persian/Arabic (؟).
+  static final RegExp _sentenceEndRe =
+      RegExp(r'[.!?…。?؟]+(?=\s|$)', unicode: true);
+
+  void _ttsResetStream() {
+    _ttsStreamBuffer = '';
+  }
+
+  void _ttsConsumeToken(String token) {
+    _ttsStreamBuffer += token;
+    final matches = _sentenceEndRe.allMatches(_ttsStreamBuffer).toList();
+    if (matches.isEmpty) return;
+    final endIdx = matches.last.end;
+    final chunk = _ttsStreamBuffer.substring(0, endIdx).trim();
+    _ttsStreamBuffer = _ttsStreamBuffer.substring(endIdx);
+    if (chunk.isEmpty) return;
+    unawaited(VoiceService.instance.speak(chunk));
+  }
+
+  void _ttsFlush() {
+    final remainder = _ttsStreamBuffer.trim();
+    _ttsStreamBuffer = '';
+    if (remainder.isEmpty) return;
+    unawaited(VoiceService.instance.speak(remainder));
   }
 
   // Tracks whether the current streamed reply has slipped into "raw
@@ -677,6 +752,9 @@ CRITICAL RULES:
           stage: _stage,
           progress: _downloadProgress,
           onReset: _stage == _ModelStage.ready ? _resetChat : null,
+          groundedLabel: _stage == _ModelStage.ready ? _groundedLabel : null,
+          groundedPlaceCount: _groundedPlaceCount,
+          groundedNewsCount: _groundedNewsCount,
         ),
         Expanded(
           child: _stage == _ModelStage.ready
@@ -776,11 +854,20 @@ class _StatusBanner extends StatelessWidget {
     required this.stage,
     required this.progress,
     this.onReset,
+    this.groundedLabel,
+    this.groundedPlaceCount = 0,
+    this.groundedNewsCount = 0,
   });
 
   final _ModelStage stage;
   final int progress;
   final VoidCallback? onReset;
+  // Surfaces what the active chat session was actually grounded in, so the
+  // user can verify that a location-preset switch reached the agent. Null
+  // when no chat is live (download / checking / error stages).
+  final String? groundedLabel;
+  final int groundedPlaceCount;
+  final int groundedNewsCount;
 
   @override
   Widget build(BuildContext context) {
@@ -791,36 +878,68 @@ class _StatusBanner extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       borderRadius: 24,
       opacity: 0.18,
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          if (stage == _ModelStage.checking || stage == _ModelStage.downloading)
-            SizedBox.square(
-              dimension: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                value: stage == _ModelStage.downloading && progress > 0
-                    ? progress / 100
-                    : null,
+          Row(
+            children: [
+              if (stage == _ModelStage.checking ||
+                  stage == _ModelStage.downloading)
+                SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    value: stage == _ModelStage.downloading && progress > 0
+                        ? progress / 100
+                        : null,
+                  ),
+                )
+              else
+                GlassPill(label: label, icon: icon, color: color),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(
+                    color: GlassColors.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
               ),
-            )
-          else
-            GlassPill(label: label, icon: icon, color: color),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              message,
-              style: const TextStyle(
-                color: GlassColors.textSecondary,
-                fontSize: 12,
-              ),
-            ),
+              if (onReset != null) ...[
+                const SizedBox(width: 6),
+                GlassIconButton(
+                  icon: Icons.restart_alt,
+                  color: GlassColors.textPrimary,
+                  onPressed: onReset,
+                ),
+              ],
+            ],
           ),
-          if (onReset != null) ...[
-            const SizedBox(width: 6),
-            GlassIconButton(
-              icon: Icons.restart_alt,
-              color: GlassColors.textPrimary,
-              onPressed: onReset,
+          if (groundedLabel != null) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(
+                  Icons.place_outlined,
+                  size: 12,
+                  color: GlassColors.safe.withValues(alpha: 0.85),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    'Grounded in: $groundedLabel · '
+                    '$groundedPlaceCount places · $groundedNewsCount news',
+                    style: TextStyle(
+                      color: GlassColors.safe.withValues(alpha: 0.95),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ],

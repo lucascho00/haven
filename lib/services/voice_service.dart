@@ -46,6 +46,10 @@ class VoiceService {
       try {
         await _tts.awaitSpeakCompletion(true);
         await _tts.setSpeechRate(0.5);
+        // Queue mode 1 = enqueue subsequent speak() calls instead of
+        // interrupting. Lets us call speak() per sentence as the agent
+        // streams tokens — TTS plays back-to-back without gaps.
+        await _tts.setQueueMode(1);
         _tts.setStartHandler(
           () => debugPrint('Voice/TTS start'),
         );
